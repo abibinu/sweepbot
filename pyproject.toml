@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sweepbot"
+version = "0.2.0"
+description = "EURUSD NY-Open Sweep-and-Reject automated trading bot with backtesting platform"
+requires-python = ">=3.11"
+dependencies = [
+    "MetaTrader5>=5.0.45",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pytz>=2024.1",
+    "scipy>=1.13",
+    "tabulate>=0.9",
+    "rich>=13.7",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+sweepbot = "sweepbot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sweepbot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
