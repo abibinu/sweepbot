@@ -296,6 +296,8 @@ class StrategyStateMachine:
         """Check if the entry bar start time is within the allowed window."""
         date = entry_bar_ist.date()
         sess = get_session_times(date)
+        if getattr(self.cfg, "early_entries_only", False):
+            return sess.entry_start_ist <= entry_bar_ist < sess.late_entry_threshold_ist
         return sess.entry_start_ist <= entry_bar_ist <= sess.entry_last_bar_ist
 
     def _next_bar_ist(self, bar_ist: pd.Timestamp) -> pd.Timestamp:

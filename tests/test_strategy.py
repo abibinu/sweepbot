@@ -326,3 +326,51 @@ class TestOpeningBarSeed:
         assert sig.level_name == "PDL"
         assert sig.pattern == "one_candle"
 
+
+class TestEarlyEntriesFilter:
+    """Tests for restricting entries strictly before US cash open (19:00 IST summer)."""
+
+    def test_late_entry_rejected_when_early_only_true(self):
+        from dataclasses import replace
+        cfg_early = replace(CFG, early_entries_only=True)
+        sm = StrategyStateMachine(cfg=cfg_early)
+        sm.on_day_start(TRADE_DATE, LEVELS)
+        L = LEVELS.pdl
+
+        # Pre-sweep bar at 18:30 IST
+        dummy = _bar(L + 0.0020, L + 0.0030, L + 0.0010, L + 0.0015, _ist(18, 30))
+        # Sweep & rejection bar at 18:45 IST -> entry bar would be 19:00 IST (late threshold)
+        sweep_1845 = _bar(
+            open_=L + 0.0002,
+            high=L + 0.0015,
+            low=L - 3 * PIP,
+            close=L + 0.0005,
+            ts_ist=_ist(18, 45),
+        )
+        sm.on_m15_close(0, dummy)
+        sigs = sm.on_m15_close(1, sweep_1845)
+        # 19:00 IST is not < 19:00 IST threshold -> rejected
+        assert len(sigs) == 0
+
+    def test_late_entry_allowed_when_early_only_false(self):
+        from dataclasses import replace
+        cfg_all = replace(CFG, early_entries_only=False)
+        sm = StrategyStateMachine(cfg=cfg_all)
+        sm.on_day_start(TRADE_DATE, LEVELS)
+        L = LEVELS.pdl
+
+        dummy = _bar(L + 0.0020, L + 0.0030, L + 0.0010, L + 0.0015, _ist(18, 30))
+        sweep_1845 = _bar(
+            open_=L + 0.0002,
+            high=L + 0.0015,
+            low=L - 3 * PIP,
+            close=L + 0.0005,
+            ts_ist=_ist(18, 45),
+        )
+        sm.on_m15_close(0, dummy)
+        sigs = sm.on_m15_close(1, sweep_1845)
+        # When early_only is False, 19:00 IST is within entry_last_bar (19:15) -> accepted
+        assert len(sigs) == 1
+        assert sigs[0].entry_bar_time == _ist(19, 0)
+
+

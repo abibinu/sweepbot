@@ -62,6 +62,7 @@ All strategy times are defined in Indian Standard Time (IST) anchored to 08:00 N
   - Rejection Confirmation: For LONG setups, the rejection candle must close bullish (`close > open`); for SHORT setups, it must close bearish (`close < open`). Eliminates opposite-color fakeouts.
   - Level Filtering: London Low (`LonL`) is excluded by default to avoid trend-continuation traps during European-to-US handover.
   - Noise Filter: Minimum stop distance set to 5.0 pips to avoid intra-bar spread stop-outs.
+  - Early-Only Entry Filter: Restricts trade entries strictly before US cash equity market open (< 19:00 IST Summer / < 20:00 IST Winter / 09:30 NY), cutting out low-expectancy late entries.
 
 ## Key Technical Highlights
 

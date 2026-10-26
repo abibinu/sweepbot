@@ -54,15 +54,16 @@ def main(ctx: click.Context, verbose: bool) -> None:
 @click.option("--risk-pct", default=None, type=float,
               help="Override risk_per_trade_pct (e.g. 0.5)")
 @click.option("--symbol", default="EURUSD", show_default=True, help="Forex symbol (e.g. EURUSD, GBPUSD, USDJPY)")
+@click.option("--early-only/--all-window", "early_only", default=True, help="Restrict entries before 19:00 IST / 09:30 NY cash open")
 @click.pass_context
-def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct, symbol):
+def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct, symbol, early_only):
     """Run a backtest over historical M1 data."""
     import dataclasses
     from sweepbot.config import CFG, Config
     from sweepbot.data.loader import load_m1, load_m1_from_csv
     from sweepbot.engine.backtest import run_backtest
 
-    overrides = {"symbol": symbol}
+    overrides = {"symbol": symbol, "early_entries_only": early_only}
     if risk_pct is not None:
         overrides["risk_per_trade_pct"] = risk_pct
         console.print(f"[yellow][!] risk_per_trade_pct overridden to {risk_pct}%[/yellow]")
@@ -170,16 +171,17 @@ def verify_tz(ctx, csv_path):
 @click.option("--dry-run", is_flag=True, default=False,
               help="Detect signals but do NOT place orders")
 @click.option("--symbol", default="EURUSD", show_default=True, help="Forex symbol to trade")
+@click.option("--early-only/--all-window", "early_only", default=True, help="Restrict entries before 19:00 IST / 09:30 NY cash open")
 @click.option("--login", default=None, type=int, help="MT5 account login")
 @click.option("--password", default=None, help="MT5 account password")
 @click.option("--server", default=None, help="MT5 broker server")
 @click.pass_context
-def live(ctx, mode, dry_run, symbol, login, password, server):
+def live(ctx, mode, dry_run, symbol, early_only, login, password, server):
     """Run the live / paper trading session."""
     import dataclasses
     from sweepbot.config import CFG
 
-    overrides = {"symbol": symbol}
+    overrides = {"symbol": symbol, "early_entries_only": early_only}
     if login or password or server:
         overrides.update({
             "mt5_login": login or CFG.mt5_login,

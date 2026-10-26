@@ -85,6 +85,8 @@ class Config:
     allowed_patterns: tuple[str, ...] = ("one_candle", "two_candle")
     # Excluded levels to avoid low-expectancy continuation traps (e.g. LonL)
     excluded_levels: tuple[str, ...] = ("LonL",)
+    # Restrict entries strictly before US cash equity open (19:00 IST summer / 20:00 IST winter)
+    early_entries_only: bool = True
 
     # ── Dynamic Breakeven ────────────────────────────────────────────────────
     enable_breakeven: bool = True
