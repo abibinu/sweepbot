@@ -68,12 +68,12 @@ class TestOneCandleLong:
         L = LEVELS.pdl
 
         dummy = _bar(L + 0.0020, L + 0.0030, L + 0.0010, L + 0.0015, _ist(17, 30))
-        # Bar 1 (17:45 IST): prev_close above L, sweeps below L
+        # Bar 1 (17:45 IST): prev_close above L, sweeps below L, closes green above L
         bar1 = _bar(
-            open_=L + 0.0010,
+            open_=L + 0.0002,
             high=L + 0.0015,
             low=L - 3 * PIP,    # Sweeps 3 pips below
-            close=L + 0.0005,   # Closes above L → one-candle rejection
+            close=L + 0.0005,   # Closes above L and above open → bullish rejection
             ts_ist=_ist(17, 45),
         )
 
@@ -105,10 +105,10 @@ class TestOneCandleShort:
 
         dummy = _bar(L - 0.0020, L - 0.0010, L - 0.0030, L - 0.0015, _ist(17, 30))
         sweep_bar = _bar(
-            open_=L - 0.0010,
+            open_=L - 0.0002,
             high=L + 3 * PIP,    # Sweeps 3 pips above
             low=L - 0.0015,
-            close=L - 0.0005,    # Closes below L → one-candle rejection
+            close=L - 0.0005,    # Closes below L and below open → bearish rejection
             ts_ist=_ist(17, 45),
         )
 
@@ -171,14 +171,14 @@ class TestLevelConsumed:
         L = LEVELS.pdl
         dummy = _bar(L + 0.0020, L + 0.0030, L + 0.0010, L + 0.0015, _ist(17, 30))
 
-        # First sweep+rejection
-        sweep1 = _bar(L + 0.0010, L + 0.0015, L - 3 * PIP, L + 0.0005, _ist(17, 45))
+        # First sweep+rejection (bullish green candle close > open)
+        sweep1 = _bar(L + 0.0002, L + 0.0015, L - 3 * PIP, L + 0.0005, _ist(17, 45))
         sm.on_m15_close(0, dummy)
         s1 = sm.on_m15_close(1, sweep1)
         assert len(s1) == 1
 
         # Second sweep attempt on same level — should be ignored
-        sweep2 = _bar(L + 0.0010, L + 0.0015, L - 3 * PIP, L + 0.0005, _ist(18, 0))
+        sweep2 = _bar(L + 0.0002, L + 0.0015, L - 3 * PIP, L + 0.0005, _ist(18, 0))
         s2 = sm.on_m15_close(2, sweep2)
         assert len(s2) == 0
 
@@ -234,3 +234,68 @@ class TestMaxTradesPerDay:
 
         signals = sm.get_day_signals()
         assert len(signals) == CFG.max_trades_per_day  # 2
+
+
+class TestFineTuning:
+    """Tests for strategy fine-tuning parameters."""
+
+    def test_rejection_color_filter(self):
+        """Red candle rejection for LONG should be filtered out."""
+        from sweepbot.config import Config
+        cfg_strict = Config(require_rejection_color=True)
+        sm = StrategyStateMachine(cfg=cfg_strict)
+        sm.on_day_start(TRADE_DATE, LEVELS)
+        L = LEVELS.pdl
+
+        dummy = _bar(L + 0.0020, L + 0.0030, L + 0.0010, L + 0.0015, _ist(17, 30))
+        # Bearish candle (open 1.0910 > close 1.0905)
+        bearish_sweep = _bar(
+            open_=L + 0.0010,
+            high=L + 0.0015,
+            low=L - 3 * PIP,
+            close=L + 0.0005,
+            ts_ist=_ist(17, 45),
+        )
+        sm.on_m15_close(0, dummy)
+        sigs = sm.on_m15_close(1, bearish_sweep)
+        assert len(sigs) == 0
+
+        # Now test with require_rejection_color=False -> should accept
+        cfg_relaxed = Config(require_rejection_color=False)
+        sm2 = StrategyStateMachine(cfg=cfg_relaxed)
+        sm2.on_day_start(TRADE_DATE, LEVELS)
+        sm2.on_m15_close(0, dummy)
+        sigs2 = sm2.on_m15_close(1, bearish_sweep)
+        assert len(sigs2) == 1
+
+    def test_excluded_levels(self):
+        """Levels in excluded_levels should not be loaded into strategy."""
+        from sweepbot.config import Config
+        cfg = Config(excluded_levels=("LonL", "AsiaL"))
+        sm = StrategyStateMachine(cfg=cfg)
+        sm.on_day_start(TRADE_DATE, LEVELS)
+        names = [l.name for l in sm._levels]
+        assert "LonL" not in names
+        assert "AsiaL" not in names
+        assert "PDL" in names
+        assert "AsiaH" in names
+
+    def test_allowed_patterns_filter(self):
+        """If allowed_patterns=('two_candle',), one-candle signals should be ignored."""
+        from sweepbot.config import Config
+        cfg = Config(allowed_patterns=("two_candle",))
+        sm = StrategyStateMachine(cfg=cfg)
+        sm.on_day_start(TRADE_DATE, LEVELS)
+        L = LEVELS.pdl
+
+        dummy = _bar(L + 0.0020, L + 0.0030, L + 0.0010, L + 0.0015, _ist(17, 30))
+        valid_one_candle = _bar(
+            open_=L + 0.0002,
+            high=L + 0.0015,
+            low=L - 3 * PIP,
+            close=L + 0.0005,
+            ts_ist=_ist(17, 45),
+        )
+        sm.on_m15_close(0, dummy)
+        sigs = sm.on_m15_close(1, valid_one_candle)
+        assert len(sigs) == 0

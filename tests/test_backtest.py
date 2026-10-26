@@ -72,41 +72,41 @@ def _generate_synthetic_day(date_str: str) -> list[dict]:
         })
 
     # 4. NY session: 17:30 to 21:30 (every minute)
-    # 17:30 - 17:44 (bar 0): dummy bar close above LonL (1.0920)
+    # 17:30 - 17:44 (bar 0): dummy bar close above AsiaL (1.0950)
     for m in range(1050, 1065):
         ts = base_ts + pd.Timedelta(minutes=m)
         rows.append({
             "timestamp": ts.tz_convert(TZ_UTC),
-            "open": 1.0930, "high": 1.0935, "low": 1.0925, "close": 1.0930,
+            "open": 1.0955, "high": 1.0960, "low": 1.0952, "close": 1.0955,
             "tick_volume": 50,
         })
 
-    # 17:45 - 17:59 (bar 1): sweeps LonL (1.0920) -> low drops to 1.0910, closes at 1.0925
+    # 17:45 - 17:59 (bar 1): sweeps AsiaL (1.0950) -> low drops to 1.0942, closes green at 1.0956
     for m in range(1065, 1080):
         ts = base_ts + pd.Timedelta(minutes=m)
-        lo = 1.0910 if m == 1070 else 1.0925
+        lo = 1.0942 if m == 1070 else 1.0950
         rows.append({
             "timestamp": ts.tz_convert(TZ_UTC),
-            "open": 1.0930, "high": 1.0935, "low": lo, "close": 1.0925,
+            "open": 1.0952, "high": 1.0958, "low": lo, "close": 1.0956,
             "tick_volume": 50,
         })
 
-    # 18:00 - 18:14 (bar 2): entry bar (entry at open = 1.0925)
+    # 18:00 - 18:14 (bar 2): entry bar (entry at open = 1.0956)
     for m in range(1080, 1095):
         ts = base_ts + pd.Timedelta(minutes=m)
         rows.append({
             "timestamp": ts.tz_convert(TZ_UTC),
-            "open": 1.0925, "high": 1.0935, "low": 1.0920, "close": 1.0930,
+            "open": 1.0956, "high": 1.0965, "low": 1.0954, "close": 1.0960,
             "tick_volume": 50,
         })
 
-    # 18:15+: hits target (risk ~16.2 pips -> target ~1.0958)
+    # 18:15+: hits target (risk ~17 pips -> target ~1.0992)
     for m in range(1095, 1290):
         ts = base_ts + pd.Timedelta(minutes=m)
-        hi = 1.0970 if m == 1100 else 1.0935
+        hi = 1.1000 if m == 1100 else 1.0960
         rows.append({
             "timestamp": ts.tz_convert(TZ_UTC),
-            "open": 1.0930, "high": hi, "low": 1.0920, "close": 1.0930,
+            "open": 1.0960, "high": hi, "low": 1.0950, "close": 1.0960,
             "tick_volume": 50,
         })
 

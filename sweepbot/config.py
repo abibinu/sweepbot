@@ -61,10 +61,20 @@ class Config:
     # ── Strategy parameters (in pips) ────────────────────────────────────────
     sweep_min_pips: float = 2.0
     stop_buffer_pips: float = 1.0
-    min_stop_pips: float = 3.0
+    min_stop_pips: float = 5.0
     max_stop_pips: float = 20.0
     target_r: float = 2.0
     max_trades_per_day: int = 2
+
+    # ── Strategy fine-tuning (SDD Section 8 refinement) ──────────────────────
+    # Require rejection candle to close in trade direction (bullish for LONG, bearish for SHORT)
+    require_rejection_color: bool = True
+    # Favorable candle range ratio (0.0 to disable, 0.5 = close in favorable half)
+    min_rejection_ratio: float = 0.0
+    # Allowed patterns: ("one_candle", "two_candle") or ("two_candle",)
+    allowed_patterns: tuple[str, ...] = ("one_candle", "two_candle")
+    # Excluded levels to avoid low-expectancy continuation traps (e.g. LonL)
+    excluded_levels: tuple[str, ...] = ("LonL",)
 
     # ── Risk ─────────────────────────────────────────────────────────────────
     # Use 0.25% until strategy is validated, then promote to 0.5%

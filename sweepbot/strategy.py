@@ -130,13 +130,16 @@ class StrategyStateMachine:
         for name, (price, ltype) in levels.all_levels.items():
             if price != price:  # NaN check
                 continue
+            if name in self.cfg.excluded_levels:
+                continue
             self._levels.append(_LevelState(name=name, price=price, level_type=ltype))
 
         log.debug(
-            "%s: Initialised %d levels: %s",
+            "%s: Initialised %d levels: %s (excluded: %s)",
             trade_date,
             len(self._levels),
             [f"{l.name}={l.price:.5f}" for l in self._levels],
+            self.cfg.excluded_levels,
         )
 
     def get_day_signals(self) -> list[Signal]:
@@ -209,23 +212,26 @@ class StrategyStateMachine:
             if lvl.level_type == "support":
                 if bar["close"] > lvl.price:
                     # One-candle rejection
-                    if self._entry_bar_in_window(next_bar_ist):
-                        sig = Signal(
-                            direction=Direction.LONG,
-                            level_name=lvl.name,
-                            level_price=lvl.price,
-                            pattern="one_candle",
-                            extreme=lvl.sweep_bar_low,
-                            entry_bar_time=next_bar_ist,
-                        )
-                        lvl.consumed = True
-                        lvl.swept = False
-                        self._signals.append(sig)
-                        new_signals.append(sig)
-                        log.info("One-candle signal: %s", sig)
+                    if "one_candle" in self.cfg.allowed_patterns and self._is_valid_rejection(Direction.LONG, bar):
+                        if self._entry_bar_in_window(next_bar_ist):
+                            sig = Signal(
+                                direction=Direction.LONG,
+                                level_name=lvl.name,
+                                level_price=lvl.price,
+                                pattern="one_candle",
+                                extreme=lvl.sweep_bar_low,
+                                entry_bar_time=next_bar_ist,
+                            )
+                            lvl.consumed = True
+                            lvl.swept = False
+                            self._signals.append(sig)
+                            new_signals.append(sig)
+                            log.info("One-candle signal: %s", sig)
+                        else:
+                            log.debug("%s: One-candle LONG too late — entry bar %s",
+                                      lvl.name, next_bar_ist)
+                            lvl.swept = False
                     else:
-                        log.debug("%s: One-candle LONG too late — entry bar %s",
-                                  lvl.name, next_bar_ist)
                         lvl.swept = False
                 else:
                     # Two-candle: close <= L, need next bar to close > L
@@ -235,23 +241,26 @@ class StrategyStateMachine:
             else:  # resistance
                 if bar["close"] < lvl.price:
                     # One-candle rejection
-                    if self._entry_bar_in_window(next_bar_ist):
-                        sig = Signal(
-                            direction=Direction.SHORT,
-                            level_name=lvl.name,
-                            level_price=lvl.price,
-                            pattern="one_candle",
-                            extreme=lvl.sweep_bar_high,
-                            entry_bar_time=next_bar_ist,
-                        )
-                        lvl.consumed = True
-                        lvl.swept = False
-                        self._signals.append(sig)
-                        new_signals.append(sig)
-                        log.info("One-candle signal: %s", sig)
+                    if "one_candle" in self.cfg.allowed_patterns and self._is_valid_rejection(Direction.SHORT, bar):
+                        if self._entry_bar_in_window(next_bar_ist):
+                            sig = Signal(
+                                direction=Direction.SHORT,
+                                level_name=lvl.name,
+                                level_price=lvl.price,
+                                pattern="one_candle",
+                                extreme=lvl.sweep_bar_high,
+                                entry_bar_time=next_bar_ist,
+                            )
+                            lvl.consumed = True
+                            lvl.swept = False
+                            self._signals.append(sig)
+                            new_signals.append(sig)
+                            log.info("One-candle signal: %s", sig)
+                        else:
+                            log.debug("%s: One-candle SHORT too late — entry bar %s",
+                                      lvl.name, next_bar_ist)
+                            lvl.swept = False
                     else:
-                        log.debug("%s: One-candle SHORT too late — entry bar %s",
-                                  lvl.name, next_bar_ist)
                         lvl.swept = False
                 else:
                     # Two-candle: close >= L
@@ -370,37 +379,68 @@ class StrategyStateMachine:
             combined_extreme = min(lvl.two_candle_extreme, bar["low"])
             # Second bar must close ABOVE L
             if bar["close"] > lvl.price:
-                if self._entry_bar_in_window(next_bar_ist):
-                    return Signal(
-                        direction=Direction.LONG,
-                        level_name=lvl.name,
-                        level_price=lvl.price,
-                        pattern="two_candle",
-                        extreme=combined_extreme,
-                        entry_bar_time=next_bar_ist,
-                    )
-                else:
-                    log.debug(
-                        "%s: Two-candle LONG too late — entry bar %s",
-                        lvl.name, next_bar_ist,
-                    )
+                if "two_candle" in self.cfg.allowed_patterns and self._is_valid_rejection(Direction.LONG, bar):
+                    if self._entry_bar_in_window(next_bar_ist):
+                        return Signal(
+                            direction=Direction.LONG,
+                            level_name=lvl.name,
+                            level_price=lvl.price,
+                            pattern="two_candle",
+                            extreme=combined_extreme,
+                            entry_bar_time=next_bar_ist,
+                        )
+                    else:
+                        log.debug(
+                            "%s: Two-candle LONG too late — entry bar %s",
+                            lvl.name, next_bar_ist,
+                        )
         else:  # resistance
             combined_extreme = max(lvl.two_candle_extreme, bar["high"])
             # Second bar must close BELOW L
             if bar["close"] < lvl.price:
-                if self._entry_bar_in_window(next_bar_ist):
-                    return Signal(
-                        direction=Direction.SHORT,
-                        level_name=lvl.name,
-                        level_price=lvl.price,
-                        pattern="two_candle",
-                        extreme=combined_extreme,
-                        entry_bar_time=next_bar_ist,
-                    )
-                else:
-                    log.debug(
-                        "%s: Two-candle SHORT too late — entry bar %s",
-                        lvl.name, next_bar_ist,
-                    )
+                if "two_candle" in self.cfg.allowed_patterns and self._is_valid_rejection(Direction.SHORT, bar):
+                    if self._entry_bar_in_window(next_bar_ist):
+                        return Signal(
+                            direction=Direction.SHORT,
+                            level_name=lvl.name,
+                            level_price=lvl.price,
+                            pattern="two_candle",
+                            extreme=combined_extreme,
+                            entry_bar_time=next_bar_ist,
+                        )
+                    else:
+                        log.debug(
+                            "%s: Two-candle SHORT too late — entry bar %s",
+                            lvl.name, next_bar_ist,
+                        )
         return None
+
+    def _is_valid_rejection(self, direction: Direction, bar: pd.Series) -> bool:
+        """Validate rejection candle confirmation (color and optional ratio)."""
+        if self.cfg.require_rejection_color:
+            if direction == Direction.LONG and bar["close"] <= bar["open"]:
+                log.debug("Rejecting LONG setup: rejection candle is not bullish (close <= open)")
+                return False
+            if direction == Direction.SHORT and bar["close"] >= bar["open"]:
+                log.debug("Rejecting SHORT setup: rejection candle is not bearish (close >= open)")
+                return False
+
+        if self.cfg.min_rejection_ratio > 0:
+            rng = bar["high"] - bar["low"]
+            if rng <= 0:
+                return False
+            if direction == Direction.LONG:
+                ratio = (bar["close"] - bar["low"]) / rng
+                if ratio < self.cfg.min_rejection_ratio:
+                    log.debug("Rejecting LONG setup: rejection ratio %.2f < %.2f",
+                              ratio, self.cfg.min_rejection_ratio)
+                    return False
+            else:
+                ratio = (bar["high"] - bar["close"]) / rng
+                if ratio < self.cfg.min_rejection_ratio:
+                    log.debug("Rejecting SHORT setup: rejection ratio %.2f < %.2f",
+                              ratio, self.cfg.min_rejection_ratio)
+                    return False
+
+        return True
 
