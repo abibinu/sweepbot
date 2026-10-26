@@ -234,3 +234,61 @@ class TestTimeExitAndLateEntry:
         assert res.is_early_entry is False  # 19:15 is late entry
         # Gross R = (1.0910 - 1.0900) / 0.0020 = +0.50R
         assert res.gross_r == pytest.approx(0.50)
+
+
+class TestDynamicBreakeven:
+    def test_breakeven_triggers_and_protects(self):
+        """When MFE reaches >= 1.3R, SL moves to entry + buffer and exits at BREAKEVEN if reversed."""
+        trade_date = dt.date(2025, 6, 10)
+        entry_time_ist = pd.Timestamp("2025-06-10 18:00:00", tz=TZ_IST)
+        order = _make_order(
+            direction=Direction.LONG,
+            entry_price=1.0900,
+            stop_price=1.0890,
+            target_price=1.0920,
+            entry_bar_ist=entry_time_ist,
+        )
+        entry_utc = entry_time_ist.tz_convert(TZ_UTC)
+        bars = [
+            # Bar 1: Reaches 1.0914 (+1.4R), does not hit target (1.0920)
+            (str(entry_utc), 1.0900, 1.0914, 1.0899, 1.0910),
+            # Bar 2: Drops to 1.0898, touching breakeven stop (1.0900 + 0.2 pips = 1.09002)
+            (str(entry_utc + pd.Timedelta(minutes=1)), 1.0910, 1.0912, 1.0898, 1.0900),
+        ]
+        df = _make_m1_df(bars)
+
+        res = simulate_fill(order, df, trade_date)
+        assert res is not None
+        assert res.exit_reason == ExitReason.BREAKEVEN
+        assert res.exit_price == pytest.approx(1.09002)
+        assert res.gross_r == pytest.approx(0.02)  # +0.2 pips / 10 pips = +0.02R
+
+    def test_breakeven_disabled_allows_target_hit(self):
+        """When enable_breakeven=False, pullback to entry does not exit, allowing eventual target hit."""
+        from dataclasses import replace
+        cfg_no_be = replace(CFG, enable_breakeven=False)
+        trade_date = dt.date(2025, 6, 10)
+        entry_time_ist = pd.Timestamp("2025-06-10 18:00:00", tz=TZ_IST)
+        order = _make_order(
+            direction=Direction.LONG,
+            entry_price=1.0900,
+            stop_price=1.0890,
+            target_price=1.0920,
+            entry_bar_ist=entry_time_ist,
+        )
+        entry_utc = entry_time_ist.tz_convert(TZ_UTC)
+        bars = [
+            # Bar 1: Reaches 1.0914 (+1.4R)
+            (str(entry_utc), 1.0900, 1.0914, 1.0899, 1.0910),
+            # Bar 2: Pulls back to 1.0895 (above initial stop 1.0890)
+            (str(entry_utc + pd.Timedelta(minutes=1)), 1.0910, 1.0911, 1.0895, 1.0898),
+            # Bar 3: Surges to target 1.0920
+            (str(entry_utc + pd.Timedelta(minutes=2)), 1.0898, 1.0922, 1.0896, 1.0920),
+        ]
+        df = _make_m1_df(bars)
+
+        res = simulate_fill(order, df, trade_date, cfg=cfg_no_be)
+        assert res is not None
+        assert res.exit_reason == ExitReason.TARGET
+        assert res.exit_price == 1.0920
+

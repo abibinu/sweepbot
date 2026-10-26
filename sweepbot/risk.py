@@ -52,6 +52,17 @@ class OrderSpec:
         )
 
 
+def pip_value_usd_per_lot(symbol: str, current_price: float = 1.0) -> float:
+    """Return USD value of 1 pip for 1.0 standard lot."""
+    sym = symbol.upper()
+    if sym.endswith("USD"):  # EURUSD, GBPUSD
+        return 10.0
+    elif "JPY" in sym:
+        # USDJPY: 1 pip = 0.01 JPY -> 1000 JPY / price in USD
+        return 1000.0 / current_price if current_price > 0 else 6.70
+    return 10.0
+
+
 def compute_entry_price(signal: Signal, bid_price: float, cfg=CFG) -> float:
     """
     Compute execution price from a bid price.
@@ -59,8 +70,9 @@ def compute_entry_price(signal: Signal, bid_price: float, cfg=CFG) -> float:
     Longs:  Ask = Bid + spread (buy at the ask)
     Shorts: Bid (sell at bid)
     """
+    pip = getattr(cfg, "pip", PIP)
     if signal.direction == Direction.LONG:
-        return bid_price + cfg.spread_pips * PIP
+        return bid_price + cfg.spread_pips * pip
     else:
         return bid_price
 
@@ -76,15 +88,16 @@ def compute_stop_target(
     Returns (stop_price, target_price, risk_pips).
     Returns (nan, nan, nan) if risk_pips is outside [min_stop, max_stop].
     """
-    buf = cfg.stop_buffer_pips * PIP
+    pip = getattr(cfg, "pip", PIP)
+    buf = cfg.stop_buffer_pips * pip
 
     if signal.direction == Direction.LONG:
         stop_price = signal.extreme - buf
-        risk_pips = (entry_price - stop_price) / PIP
+        risk_pips = (entry_price - stop_price) / pip
         target_price = entry_price + cfg.target_r * (entry_price - stop_price)
     else:  # SHORT
         stop_price = signal.extreme + buf
-        risk_pips = (stop_price - entry_price) / PIP
+        risk_pips = (stop_price - entry_price) / pip
         target_price = entry_price - cfg.target_r * (stop_price - entry_price)
 
     if not (cfg.min_stop_pips <= risk_pips <= cfg.max_stop_pips):
@@ -97,20 +110,21 @@ def compute_lot_size(
     account_balance: float,
     risk_pips: float,
     cfg=CFG,
+    current_price: float = 1.0,
 ) -> float:
     """
     Compute position size in standard lots.
 
     Formula:
         risk_amount = account_balance * risk_per_trade_pct / 100
-        pip_value   = $10 per pip per standard lot (EURUSD)
+        pip_value   = pip value per lot in USD
         lots        = risk_amount / (risk_pips * pip_value)
 
     Rounds down to the nearest lot_step and clips to [min_lot, ∞).
     """
-    pip_value_per_lot = 10.0  # EURUSD: $10 per pip per standard lot
+    pip_val = pip_value_usd_per_lot(cfg.symbol, current_price)
     risk_usd = account_balance * (cfg.risk_per_trade_pct / 100.0)
-    raw_lots = risk_usd / (risk_pips * pip_value_per_lot)
+    raw_lots = risk_usd / (risk_pips * pip_val)
 
     # Round DOWN to nearest lot_step
     lots = math.floor(raw_lots / cfg.lot_step) * cfg.lot_step

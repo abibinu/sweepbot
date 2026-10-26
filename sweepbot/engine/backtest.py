@@ -112,7 +112,16 @@ def run_backtest(
             continue
 
         # ── Run strategy state machine ────────────────────────────────────────
-        sm.on_day_start(trade_date, levels)
+        seed_prev_close = None
+        if getattr(cfg, "enable_bar_zero_seed", True):
+            pre_start = sess.entry_start_ist.tz_convert("UTC") - pd.Timedelta(minutes=15)
+            pre_bars = m1_df_utc.loc[
+                (m1_df_utc.index >= pre_start) & (m1_df_utc.index < sess.entry_start_ist.tz_convert("UTC"))
+            ]
+            if not pre_bars.empty:
+                seed_prev_close = float(pre_bars.iloc[-1]["close"])
+
+        sm.on_day_start(trade_date, levels, seed_prev_close=seed_prev_close)
 
         for bar_idx, (ts, bar) in enumerate(m15_bars.iterrows()):
             sm.on_m15_close(bar_idx, bar)

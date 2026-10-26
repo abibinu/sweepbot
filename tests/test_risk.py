@@ -130,3 +130,18 @@ class TestCommission:
         """Commission as fraction of R."""
         r_val = commission_in_r(commission_usd=3.0, risk_amount_usd=25.0)
         assert r_val == pytest.approx(0.12)
+
+
+class TestMultiAssetPip:
+    def test_pip_size_multi_asset(self):
+        from sweepbot.config import pip_size
+        assert pip_size("EURUSD") == 0.0001
+        assert pip_size("GBPUSD") == 0.0001
+        assert pip_size("USDJPY") == 0.01
+
+    def test_pip_value_usd_per_lot(self):
+        from sweepbot.risk import pip_value_usd_per_lot
+        assert pip_value_usd_per_lot("EURUSD", 1.0850) == pytest.approx(10.0)
+        assert pip_value_usd_per_lot("GBPUSD", 1.2900) == pytest.approx(10.0)
+        assert pip_value_usd_per_lot("USDJPY", 150.0) == pytest.approx(1000.0 / 150.0)
+

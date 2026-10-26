@@ -16,13 +16,23 @@ TZ_NY = ZoneInfo("America/New_York")
 TZ_UTC = ZoneInfo("UTC")
 
 # ── 1 pip in price terms ────────────────────────────────────────────────────
-PIP = 0.0001  # EURUSD
+PIP = 0.0001  # Default (EURUSD, GBPUSD)
+
+
+def pip_size(symbol: str) -> float:
+    """Return pip size for a given forex symbol."""
+    return 0.01 if "JPY" in symbol.upper() else 0.0001
 
 
 @dataclass(frozen=True)
 class Config:
     # ── Symbol ───────────────────────────────────────────────────────────────
     symbol: str = "EURUSD"
+
+    @property
+    def pip(self) -> float:
+        return pip_size(self.symbol)
+
 
     # ── Session windows (IST hours, minutes) ─────────────────────────────────
     # Entry window: bars whose *start* time is in [17:30, 19:15] IST
@@ -75,6 +85,14 @@ class Config:
     allowed_patterns: tuple[str, ...] = ("one_candle", "two_candle")
     # Excluded levels to avoid low-expectancy continuation traps (e.g. LonL)
     excluded_levels: tuple[str, ...] = ("LonL",)
+
+    # ── Dynamic Breakeven ────────────────────────────────────────────────────
+    enable_breakeven: bool = True
+    breakeven_trigger_r: float = 1.3
+    breakeven_buffer_pips: float = 0.2
+
+    # ── Opening Bar (Bar 0) Seeding ──────────────────────────────────────────
+    enable_bar_zero_seed: bool = True
 
     # ── Risk ─────────────────────────────────────────────────────────────────
     # Use 0.25% until strategy is validated, then promote to 0.5%

@@ -53,21 +53,23 @@ def main(ctx: click.Context, verbose: bool) -> None:
 @click.option("--out-csv", default=None, help="Export trade log to this CSV file")
 @click.option("--risk-pct", default=None, type=float,
               help="Override risk_per_trade_pct (e.g. 0.5)")
+@click.option("--symbol", default="EURUSD", show_default=True, help="Forex symbol (e.g. EURUSD, GBPUSD, USDJPY)")
 @click.pass_context
-def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct):
+def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct, symbol):
     """Run a backtest over historical M1 data."""
+    import dataclasses
     from sweepbot.config import CFG, Config
     from sweepbot.data.loader import load_m1, load_m1_from_csv
     from sweepbot.engine.backtest import run_backtest
 
-    cfg = CFG
+    overrides = {"symbol": symbol}
     if risk_pct is not None:
-        # Build a modified config with overridden risk
-        import dataclasses
-        cfg = dataclasses.replace(CFG, risk_per_trade_pct=risk_pct)
+        overrides["risk_per_trade_pct"] = risk_pct
         console.print(f"[yellow][!] risk_per_trade_pct overridden to {risk_pct}%[/yellow]")
 
-    console.print(f"[bold cyan]Running backtest: {start} -> {end}[/bold cyan]")
+    cfg = dataclasses.replace(CFG, **overrides)
+    console.print(f"[bold cyan]Running backtest ({symbol}): {start} -> {end}[/bold cyan]")
+
 
     try:
         if csv_path:
@@ -120,14 +122,18 @@ def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct):
 @main.command()
 @click.option("--start", required=True, help="Start date YYYY-MM-DD")
 @click.option("--end", required=True, help="End date YYYY-MM-DD")
+@click.option("--symbol", default="EURUSD", show_default=True, help="Forex symbol to download")
 @click.pass_context
-def download(ctx, start, end):
-    """Download M1 EURUSD data from MT5 and cache locally."""
+def download(ctx, start, end, symbol):
+    """Download M1 data from MT5 and cache locally."""
+    import dataclasses
+    from sweepbot.config import CFG
     from sweepbot.data.loader import load_m1
-    console.print(f"[cyan]Downloading {start} -> {end}...[/cyan]")
+    cfg = dataclasses.replace(CFG, symbol=symbol)
+    console.print(f"[cyan]Downloading {symbol} {start} -> {end}...[/cyan]")
     try:
-        df = load_m1(start, end, force_download=True)
-        console.print(f"[green]Downloaded {len(df):,} M1 bars[/green]")
+        df = load_m1(start, end, force_download=True, cfg=cfg)
+        console.print(f"[green]Downloaded {len(df):,} M1 bars for {symbol}[/green]")
     except Exception as e:
         console.print(f"[red]Download failed: {e}[/red]")
         sys.exit(1)
@@ -151,7 +157,6 @@ def verify_tz(ctx, csv_path):
         else:
             console.print("[bold red]Timezone verification FAILED — check data source![/bold red]")
             sys.exit(1)
-            sys.exit(1)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
@@ -164,23 +169,24 @@ def verify_tz(ctx, csv_path):
               show_default=True, help="Trading mode")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Detect signals but do NOT place orders")
+@click.option("--symbol", default="EURUSD", show_default=True, help="Forex symbol to trade")
 @click.option("--login", default=None, type=int, help="MT5 account login")
 @click.option("--password", default=None, help="MT5 account password")
 @click.option("--server", default=None, help="MT5 broker server")
 @click.pass_context
-def live(ctx, mode, dry_run, login, password, server):
+def live(ctx, mode, dry_run, symbol, login, password, server):
     """Run the live / paper trading session."""
     import dataclasses
     from sweepbot.config import CFG
 
-    cfg = CFG
+    overrides = {"symbol": symbol}
     if login or password or server:
-        cfg = dataclasses.replace(
-            CFG,
-            mt5_login=login or CFG.mt5_login,
-            mt5_password=password or CFG.mt5_password,
-            mt5_server=server or CFG.mt5_server,
-        )
+        overrides.update({
+            "mt5_login": login or CFG.mt5_login,
+            "mt5_password": password or CFG.mt5_password,
+            "mt5_server": server or CFG.mt5_server,
+        })
+    cfg = dataclasses.replace(CFG, **overrides)
 
     console.print(f"[bold cyan]Starting SweepBot [{mode.upper()}] mode[/bold cyan]")
     if dry_run:

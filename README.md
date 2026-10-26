@@ -52,6 +52,9 @@ All strategy times are defined in Indian Standard Time (IST) anchored to 08:00 N
   - Entry Price: Bid + 0.2 pips spread for longs; Bid for shorts
   - Stop Distance: Extreme minus 1.0 pip buffer for longs (plus 1.0 pip for shorts). Orders skipped if stop distance is outside 5 to 20 pips (5.0 pip floor filters noise stop-outs).
   - Target: 2.0R (Entry +/- 2 * risk)
+  - Dynamic Breakeven: When maximum favorable excursion reaches +1.3R, the Stop Loss is automatically moved to entry (+ 0.2 pips buffer for spread) to lock in protection against reversals.
+  - Opening Bar Seeding: The 17:15 M15 bar close is seeded at day start, enabling the strategy to detect and capture sweeps occurring on the initial 17:30 IST opening bar.
+  - Multi-Asset Support: Fully supports EURUSD, GBPUSD, and USDJPY with dynamic pip scaling (0.0001 for EUR/GBP, 0.01 for JPY) and symbol-specific pip value calculations.
   - Daily Trade Limit: Maximum 2 signals executed per trading day
   - Risk per Trade: 0.25% of equity (expandable to 0.5% post-validation)
   - Commissions: 3.00 USD per standard lot round-turn, converted to R units and deducted from net PnL
@@ -101,14 +104,19 @@ The platform is operated via the `sweepbot` command-line tool.
 
 ### Running a Backtest
 
-Run a backtest using cached data or MT5:
+Run a backtest using cached data or MT5 (defaults to EURUSD):
 ```bash
-sweepbot backtest --start 2025-01-01 --end 2025-12-31
+sweepbot backtest --start 2025-01-01 --end 2025-12-31 --symbol EURUSD
+```
+
+Run a backtest on other supported symbols (e.g., GBPUSD or USDJPY):
+```bash
+sweepbot backtest --start 2025-01-01 --end 2025-12-31 --symbol GBPUSD
 ```
 
 Run a backtest from a custom M1 CSV file and export trades:
 ```bash
-sweepbot backtest --csv path/to/m1_data.csv --start 2025-01-01 --end 2025-06-30 --out-csv trades.csv
+sweepbot backtest --csv path/to/m1_data.csv --start 2025-01-01 --end 2025-06-30 --symbol EURUSD --out-csv trades.csv
 ```
 
 Override risk percentage or account balance:
@@ -127,24 +135,26 @@ sweepbot verify-tz --csv path/to/m1_data.csv
 
 Download and cache M1 bars directly from an MT5 terminal:
 ```bash
-sweepbot download --start 2025-01-01 --end 2025-12-31
+sweepbot download --start 2025-01-01 --end 2025-12-31 --symbol EURUSD
+sweepbot download --start 2025-01-01 --end 2025-12-31 --symbol GBPUSD
+sweepbot download --start 2025-01-01 --end 2025-12-31 --symbol USDJPY
 ```
 
 ### Paper and Live Trading
 
 Run in paper trading mode (tracks positions virtually using live prices):
 ```bash
-sweepbot live --mode paper
+sweepbot live --mode paper --symbol EURUSD
 ```
 
 Run in live mode with order execution:
 ```bash
-sweepbot live --mode live --login <account_id> --password <password> --server <broker_server>
+sweepbot live --mode live --symbol EURUSD --login <account_id> --password <password> --server <broker_server>
 ```
 
 Run in dry-run mode (scans and logs signals without placing orders):
 ```bash
-sweepbot live --mode live --dry-run
+sweepbot live --mode live --symbol EURUSD --dry-run
 ```
 
 ## Running the Test Suite

@@ -299,3 +299,30 @@ class TestFineTuning:
         sm.on_m15_close(0, dummy)
         sigs = sm.on_m15_close(1, valid_one_candle)
         assert len(sigs) == 0
+
+
+class TestOpeningBarSeed:
+    """Tests for Opening Bar (Bar 0) Seeding with the 17:15 M15 close."""
+
+    def test_bar_zero_can_trigger_signal_with_seed(self):
+        """When seed_prev_close is provided, bar 0 (17:30 IST) can detect a sweep and signal."""
+        sm = StrategyStateMachine(cfg=CFG)
+        L = LEVELS.pdl
+        # London close at 17:15 was above PDL
+        sm.on_day_start(TRADE_DATE, LEVELS, seed_prev_close=L + 0.0010)
+
+        # Bar 0 sweeps PDL and closes green above PDL
+        sweep_bar_0 = _bar(
+            open_=L + 0.0002,
+            high=L + 0.0015,
+            low=L - 3 * PIP,
+            close=L + 0.0005,
+            ts_ist=_ist(17, 30),
+        )
+        signals = sm.on_m15_close(0, sweep_bar_0)
+        assert len(signals) == 1
+        sig = signals[0]
+        assert sig.direction == Direction.LONG
+        assert sig.level_name == "PDL"
+        assert sig.pattern == "one_candle"
+

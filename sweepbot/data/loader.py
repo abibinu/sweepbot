@@ -55,10 +55,10 @@ def _ensure_mt5_connected(cfg=CFG) -> None:
         )
 
 
-def _cache_path(year: int, data_dir: str = CFG.data_dir) -> Path:
+def _cache_path(year: int, data_dir: str = CFG.data_dir, symbol: str = CFG.symbol) -> Path:
     p = Path(data_dir)
     p.mkdir(parents=True, exist_ok=True)
-    return p / f"{CFG.symbol}_M1_{year}.parquet"
+    return p / f"{symbol}_M1_{year}.parquet"
 
 
 def _download_year(year: int, cfg=CFG) -> pd.DataFrame:
@@ -131,7 +131,7 @@ def load_m1(
     frames: list[pd.DataFrame] = []
 
     for year in years:
-        cache = _cache_path(year, cfg.data_dir)
+        cache = _cache_path(year, cfg.data_dir, cfg.symbol)
         if cache.exists() and not force_download:
             log.info("Loading cache: %s", cache)
             df_year = pd.read_parquet(cache)

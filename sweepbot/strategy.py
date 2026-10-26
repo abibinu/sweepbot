@@ -114,10 +114,16 @@ class StrategyStateMachine:
         self._signals: list[Signal] = []
         self._bar_history: list[pd.Series] = []   # all bars seen today, in order
         self._trade_date: Optional[dt.date] = None
+        self._seed_prev_close: Optional[float] = None
 
     # ── Day lifecycle ─────────────────────────────────────────────────────────
 
-    def on_day_start(self, trade_date: dt.date, levels: DayLevels) -> None:
+    def on_day_start(
+        self,
+        trade_date: dt.date,
+        levels: DayLevels,
+        seed_prev_close: Optional[float] = None,
+    ) -> None:
         """
         Reset state and initialise levels for a new trading day.
         Must be called before the first on_m15_close of the day.
@@ -125,6 +131,7 @@ class StrategyStateMachine:
         self._trade_date = trade_date
         self._signals = []
         self._bar_history = []
+        self._seed_prev_close = seed_prev_close
 
         self._levels = []
         for name, (price, ltype) in levels.all_levels.items():
@@ -135,11 +142,12 @@ class StrategyStateMachine:
             self._levels.append(_LevelState(name=name, price=price, level_type=ltype))
 
         log.debug(
-            "%s: Initialised %d levels: %s (excluded: %s)",
+            "%s: Initialised %d levels: %s (excluded: %s, seed_prev_close=%s)",
             trade_date,
             len(self._levels),
             [f"{l.name}={l.price:.5f}" for l in self._levels],
             self.cfg.excluded_levels,
+            f"{seed_prev_close:.5f}" if seed_prev_close is not None else "None",
         )
 
     def get_day_signals(self) -> list[Signal]:
@@ -187,7 +195,7 @@ class StrategyStateMachine:
 
             # ── Step 2: Check for a fresh sweep ──────────────────────────────
             if bar_idx == 0:
-                prev_close = None  # No previous bar in session — use first bar's open
+                prev_close = self._seed_prev_close
             else:
                 prev_close = self._bar_history[-2]["close"]
 
@@ -274,7 +282,7 @@ class StrategyStateMachine:
 
     def _is_sweep(self, lvl: _LevelState, bar: pd.Series, prev_close: float) -> bool:
         """SDD §2.5 sweep condition."""
-        pip = self.cfg.sweep_min_pips * PIP
+        pip = self.cfg.sweep_min_pips * self.cfg.pip
         if lvl.level_type == "support":
             # bar.low <= L - sweep_min_pips  AND  prev_close > L
             return bar["low"] <= (lvl.price - pip) and prev_close > lvl.price

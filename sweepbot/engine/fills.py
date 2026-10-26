@@ -33,6 +33,7 @@ class ExitReason(Enum):
     TARGET = auto()
     STOP = auto()
     TIME = auto()    # 21:30 IST hard exit
+    BREAKEVEN = auto()  # Stop hit after SL moved to breakeven
 
 
 @dataclass
@@ -110,28 +111,43 @@ def simulate_fill(
         return None
 
     entry_time = sim_bars.index[0]  # Actual first bar after entry bar time
+    pip = getattr(cfg, "pip", PIP)
+    risk_dist = abs(entry_price - stop_price)
+    current_stop = stop_price
+    is_breakeven_active = False
 
     for ts, bar in sim_bars.iterrows():
-        # For longs: check stop (low) and target (high)
-        # For shorts: check stop (high) and target (low)
+        # Check stop and target hits against current stop level
         if direction == Direction.LONG:
-            stop_hit = bar["low"] <= stop_price
+            stop_hit = bar["low"] <= current_stop
             target_hit = bar["high"] >= target_price
         else:
-            stop_hit = bar["high"] >= stop_price
+            stop_hit = bar["high"] >= current_stop
             target_hit = bar["low"] <= target_price
 
-        # SDD §2.8: if both touched in same bar → count as stop
+        # SDD §2.8: if both touched in same bar → count as stop (worst case)
         if stop_hit and target_hit:
-            exit_p = stop_price
-            reason = ExitReason.STOP
+            exit_p = current_stop
+            reason = ExitReason.BREAKEVEN if is_breakeven_active else ExitReason.STOP
         elif stop_hit:
-            exit_p = stop_price
-            reason = ExitReason.STOP
+            exit_p = current_stop
+            reason = ExitReason.BREAKEVEN if is_breakeven_active else ExitReason.STOP
         elif target_hit:
             exit_p = target_price
             reason = ExitReason.TARGET
         else:
+            # Check dynamic breakeven trigger for subsequent bars
+            if getattr(cfg, "enable_breakeven", False) and not is_breakeven_active and risk_dist > 0:
+                if direction == Direction.LONG:
+                    mfe_r = (bar["high"] - entry_price) / risk_dist
+                    if mfe_r >= cfg.breakeven_trigger_r:
+                        is_breakeven_active = True
+                        current_stop = entry_price + cfg.breakeven_buffer_pips * pip
+                else:
+                    mfe_r = (entry_price - bar["low"]) / risk_dist
+                    if mfe_r >= cfg.breakeven_trigger_r:
+                        is_breakeven_active = True
+                        current_stop = entry_price - cfg.breakeven_buffer_pips * pip
             continue  # Position still open
 
         gross_r = _calc_gross_r(direction, entry_price, exit_p, stop_price)
