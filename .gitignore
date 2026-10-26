@@ -11,6 +11,7 @@ dist/
 htmlcov/
 data/cache/
 *.parquet
+trades*.csv
 .venv/
 env/
 venv/

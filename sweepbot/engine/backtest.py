@@ -70,7 +70,7 @@ def run_backtest(
     (list[TradeResult], MetricsResult)
     """
     log.info("=== %s ===", title)
-    log.info("Bars: %d  |  Dates: %s → %s",
+    log.info("Bars: %d  |  Dates: %s -> %s",
              len(m1_df_utc),
              m1_df_utc.index[0].date(),
              m1_df_utc.index[-1].date())

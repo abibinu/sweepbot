@@ -24,7 +24,7 @@ console = Console()
 
 def print_summary(metrics: MetricsResult, title: str = "Backtest Results") -> None:
     """Print a rich formatted summary table to the terminal."""
-    table = Table(title=title, box=box.ROUNDED, show_header=True, header_style="bold cyan")
+    table = Table(title=title, box=box.ASCII, show_header=True, header_style="bold cyan")
     table.add_column("Metric", style="dim", width=24)
     table.add_column("Value", justify="right")
 
@@ -55,7 +55,7 @@ def print_trade_log(results: list[TradeResult], max_rows: int = 50) -> None:
     """Print a per-trade table (limited to max_rows)."""
     table = Table(
         title=f"Trade Log (showing first {min(len(results), max_rows)})",
-        box=box.SIMPLE,
+        box=box.ASCII,
         show_header=True,
         header_style="bold magenta",
     )
@@ -129,4 +129,4 @@ def save_trade_csv(results: list[TradeResult], filepath: str | Path) -> None:
                 "is_early_entry": r.is_early_entry,
             })
 
-    console.print(f"[green]✓ Trade log saved to {filepath}[/green]")
+    console.print(f"[green][OK] Trade log saved to {filepath}[/green]")

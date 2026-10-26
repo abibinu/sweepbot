@@ -41,11 +41,15 @@ def _get_mt5():
 
 def _ensure_mt5_connected(cfg=CFG) -> None:
     mt5 = _get_mt5()
-    if not mt5.initialize(
-        login=cfg.mt5_login,
-        password=cfg.mt5_password,
-        server=cfg.mt5_server,
-    ):
+    kwargs = {}
+    if cfg.mt5_login is not None:
+        kwargs["login"] = cfg.mt5_login
+    if cfg.mt5_password is not None:
+        kwargs["password"] = cfg.mt5_password
+    if cfg.mt5_server is not None:
+        kwargs["server"] = cfg.mt5_server
+
+    if not mt5.initialize(**kwargs):
         raise ConnectionError(
             f"MT5 initialize() failed: {mt5.last_error()}"
         )
@@ -58,26 +62,44 @@ def _cache_path(year: int, data_dir: str = CFG.data_dir) -> Path:
 
 
 def _download_year(year: int, cfg=CFG) -> pd.DataFrame:
-    """Download one year of M1 data from MT5 and return as DataFrame (UTC index)."""
+    """
+    Download one year of M1 data from MT5 in monthly chunks and return as DataFrame (UTC index).
+    Chunking prevents 'Invalid params' errors caused by MT5 terminal buffer limits.
+    """
     mt5 = _get_mt5()
     _ensure_mt5_connected(cfg)
 
-    start = dt.datetime(year, 1, 1, tzinfo=TZ_UTC)
-    end = dt.datetime(year + 1, 1, 1, tzinfo=TZ_UTC)
+    log.info("Downloading %s M1 for %d from MT5...", cfg.symbol, year)
+    all_frames: list[pd.DataFrame] = []
 
-    log.info("Downloading %s M1 for %d …", cfg.symbol, year)
-    rates = mt5.copy_rates_range(cfg.symbol, mt5.TIMEFRAME_M1, start, end)
-    if rates is None or len(rates) == 0:
+    for month in range(1, 13):
+        m_start = dt.datetime(year, month, 1, tzinfo=TZ_UTC)
+        if month == 12:
+            m_end = dt.datetime(year + 1, 1, 1, tzinfo=TZ_UTC)
+        else:
+            m_end = dt.datetime(year, month + 1, 1, tzinfo=TZ_UTC)
+
+        # Convert to POSIX seconds for robust MT5 API compatibility
+        t1 = int(m_start.timestamp())
+        t2 = int(m_end.timestamp())
+
+        rates = mt5.copy_rates_range(cfg.symbol, mt5.TIMEFRAME_M1, t1, t2)
+        if rates is not None and len(rates) > 0:
+            df_m = pd.DataFrame(rates)
+            df_m["time"] = pd.to_datetime(df_m["time"], unit="s", utc=True)
+            df_m = df_m.set_index("time").rename_axis("timestamp")
+            cols = [c for c in ["open", "high", "low", "close", "tick_volume", "spread", "real_volume"] if c in df_m.columns]
+            df_m = df_m[cols]
+            all_frames.append(df_m)
+
+    if not all_frames:
         raise ValueError(
-            f"MT5 returned no data for {cfg.symbol} M1 {year}: {mt5.last_error()}"
+            f"MT5 returned no data for {cfg.symbol} M1 {year}. "
+            "Please ensure historical M1 bars are downloaded in your MT5 terminal (Tools -> History Center -> EURUSD M1 -> Download), "
+            "or load from CSV using --csv <filepath>."
         )
 
-    df = pd.DataFrame(rates)
-    # MT5 returns 'time' as POSIX seconds (UTC)
-    df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
-    df = df.set_index("time").rename_axis("timestamp")
-    df = df[["open", "high", "low", "close", "tick_volume", "spread", "real_volume"]]
-    df = df.sort_index()
+    df = pd.concat(all_frames).drop_duplicates().sort_index()
     log.info("  Got %d bars for %d", len(df), year)
     return df
 

@@ -16,6 +16,7 @@ dependencies = [
     "tabulate>=0.9",
     "rich>=13.7",
     "click>=8.1",
+    "pyarrow>=15.0",
 ]
 
 [project.optional-dependencies]

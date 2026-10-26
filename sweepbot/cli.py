@@ -65,9 +65,9 @@ def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct):
         # Build a modified config with overridden risk
         import dataclasses
         cfg = dataclasses.replace(CFG, risk_per_trade_pct=risk_pct)
-        console.print(f"[yellow]⚠ risk_per_trade_pct overridden to {risk_pct}%[/yellow]")
+        console.print(f"[yellow][!] risk_per_trade_pct overridden to {risk_pct}%[/yellow]")
 
-    console.print(f"[bold cyan]Running backtest: {start} → {end}[/bold cyan]")
+    console.print(f"[bold cyan]Running backtest: {start} -> {end}[/bold cyan]")
 
     try:
         if csv_path:
@@ -91,28 +91,28 @@ def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct):
         cfg=cfg,
         print_log=not no_log,
         save_csv=out_csv,
-        title=f"Backtest {start} → {end}",
+        title=f"Backtest {start} -> {end}",
     )
 
-    # SDD §8 acceptance criteria check
-    console.print("\n[bold]Validation Protocol (SDD §8):[/bold]")
+    # SDD Section 8 acceptance criteria check
+    console.print("\n[bold]Validation Protocol (SDD Section 8):[/bold]")
     checks = {
         f"Trades > 60": (metrics.trade_count > 60, f"{metrics.trade_count}"),
         f"Net avg R > 0": (metrics.avg_net_r > 0, f"{metrics.avg_net_r:+.4f}"),
-        f"CI lower > -∞ (any positive signal)": (metrics.ci_lower > -1.0, f"{metrics.ci_lower:+.3f}"),
+        f"CI lower > -inf (any positive signal)": (metrics.ci_lower > -1.0, f"{metrics.ci_lower:+.3f}"),
     }
     all_pass = True
     for check, (passed, val) in checks.items():
-        icon = "✓" if passed else "✗"
+        icon = "[OK]" if passed else "[FAIL]"
         color = "green" if passed else "red"
         console.print(f"  [{color}]{icon}[/{color}] {check}: {val}")
         if not passed:
             all_pass = False
 
     if all_pass:
-        console.print("[bold green]✓ All acceptance criteria passed.[/bold green]")
+        console.print("[bold green]All acceptance criteria passed.[/bold green]")
     else:
-        console.print("[bold red]✗ One or more acceptance criteria FAILED.[/bold red]")
+        console.print("[bold red]One or more acceptance criteria FAILED.[/bold red]")
 
 
 # ── download ──────────────────────────────────────────────────────────────────
@@ -124,10 +124,10 @@ def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct):
 def download(ctx, start, end):
     """Download M1 EURUSD data from MT5 and cache locally."""
     from sweepbot.data.loader import load_m1
-    console.print(f"[cyan]Downloading {start} → {end}...[/cyan]")
+    console.print(f"[cyan]Downloading {start} -> {end}...[/cyan]")
     try:
         df = load_m1(start, end, force_download=True)
-        console.print(f"[green]✓ Downloaded {len(df):,} M1 bars[/green]")
+        console.print(f"[green]Downloaded {len(df):,} M1 bars[/green]")
     except Exception as e:
         console.print(f"[red]Download failed: {e}[/red]")
         sys.exit(1)
@@ -147,9 +147,10 @@ def verify_tz(ctx, csv_path):
         df = load_m1_from_csv(csv_path)
         ok = verify_timezone(df, verbose=True)
         if ok:
-            console.print("[bold green]✓ Timezone verification PASSED[/bold green]")
+            console.print("[bold green]Timezone verification PASSED[/bold green]")
         else:
-            console.print("[bold red]✗ Timezone verification FAILED — check data source![/bold red]")
+            console.print("[bold red]Timezone verification FAILED — check data source![/bold red]")
+            sys.exit(1)
             sys.exit(1)
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -183,7 +184,7 @@ def live(ctx, mode, dry_run, login, password, server):
 
     console.print(f"[bold cyan]Starting SweepBot [{mode.upper()}] mode[/bold cyan]")
     if dry_run:
-        console.print("[yellow]⚠ DRY RUN — no real orders will be placed[/yellow]")
+        console.print("[yellow][!] DRY RUN -- no real orders will be placed[/yellow]")
 
     # Connect to MT5
     if mode == "paper":
