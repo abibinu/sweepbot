@@ -42,8 +42,20 @@ SYMBOL_PROFILES: dict[str, dict] = {
     "USDJPY": {
         "sweep_min_pips": 2.0,
         "min_stop_pips": 5.0,
-        "max_stop_pips": 25.0,
-        "excluded_levels": ("LonL",),
+        "max_stop_pips": 20.0,
+        "excluded_levels": ("LonL", "LonH"),
+    },
+    "AUDUSD": {
+        "sweep_min_pips": 1.5,
+        "min_stop_pips": 6.0,
+        "max_stop_pips": 15.0,
+        "excluded_levels": (),
+    },
+    "USDCAD": {
+        "sweep_min_pips": 2.0,
+        "min_stop_pips": 7.0,
+        "max_stop_pips": 20.0,
+        "excluded_levels": (),
     },
 }
 

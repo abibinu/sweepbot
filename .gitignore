@@ -13,6 +13,7 @@ data/cache/
 *.parquet
 trades*.csv
 *.csv
+*.pkl
 .venv/
 env/
 venv/
