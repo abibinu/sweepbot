@@ -53,6 +53,7 @@ def print_summary(metrics: MetricsResult, title: str = "Backtest Results") -> No
 
 def print_trade_log(results: list[TradeResult], max_rows: int = 50) -> None:
     """Print a per-trade table (limited to max_rows)."""
+    show_symbol = len({getattr(r.order, "symbol", "EURUSD") for r in results}) > 1
     table = Table(
         title=f"Trade Log (showing first {min(len(results), max_rows)})",
         box=box.ASCII,
@@ -60,6 +61,8 @@ def print_trade_log(results: list[TradeResult], max_rows: int = 50) -> None:
         header_style="bold magenta",
     )
     table.add_column("#", width=4)
+    if show_symbol:
+        table.add_column("Sym", width=7)
     table.add_column("Entry Time (IST)", width=20)
     table.add_column("Dir", width=6)
     table.add_column("Level", width=8)
@@ -75,8 +78,10 @@ def print_trade_log(results: list[TradeResult], max_rows: int = 50) -> None:
     for i, r in enumerate(results[:max_rows], 1):
         net_r = r.net_r
         r_style = "green" if net_r > 0 else "red"
-        table.add_row(
-            str(i),
+        row = [str(i)]
+        if show_symbol:
+            row.append(getattr(r.order, "symbol", "EURUSD"))
+        row.extend([
             str(r.entry_bar_ist.strftime("%Y-%m-%d %H:%M")),
             r.order.direction.name,
             r.order.signal.level_name,
@@ -88,7 +93,8 @@ def print_trade_log(results: list[TradeResult], max_rows: int = 50) -> None:
             f"{r.exit_price:.5f}",
             r.exit_reason.name,
             f"[{r_style}]{net_r:+.3f}[/{r_style}]",
-        )
+        ])
+        table.add_row(*row)
 
     console.print(table)
 
@@ -99,7 +105,7 @@ def save_trade_csv(results: list[TradeResult], filepath: str | Path) -> None:
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
     fields = [
-        "entry_date", "entry_time_ist", "direction", "level_name", "pattern",
+        "symbol", "entry_date", "entry_time_ist", "direction", "level_name", "pattern",
         "entry_price", "stop_price", "target_price", "risk_pips",
         "lots", "exit_price", "exit_reason", "exit_time_ist",
         "gross_r", "commission_r", "net_r", "is_early_entry",
@@ -110,6 +116,7 @@ def save_trade_csv(results: list[TradeResult], filepath: str | Path) -> None:
         writer.writeheader()
         for r in results:
             writer.writerow({
+                "symbol": getattr(r.order, "symbol", "EURUSD"),
                 "entry_date": r.entry_bar_ist.date(),
                 "entry_time_ist": r.entry_bar_ist.strftime("%H:%M"),
                 "direction": r.order.direction.name,

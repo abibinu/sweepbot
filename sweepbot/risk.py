@@ -38,6 +38,7 @@ class OrderSpec:
     account_balance: float   # snapshot at time of order
     risk_amount_usd: float   # dollars at risk (before commission)
     commission_usd: float    # commission for this trade
+    symbol: str = "EURUSD"
 
     @property
     def net_risk_usd(self) -> float:
@@ -176,6 +177,7 @@ def build_order(
         account_balance=account_balance,
         risk_amount_usd=risk_usd,
         commission_usd=commission,
+        symbol=cfg.symbol,
     )
 
 

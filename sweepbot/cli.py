@@ -63,39 +63,88 @@ def backtest(ctx, start, end, csv_path, balance, no_log, out_csv, risk_pct, symb
     from sweepbot.data.loader import load_m1, load_m1_from_csv
     from sweepbot.engine.backtest import run_backtest
 
-    overrides = {"symbol": symbol, "early_entries_only": early_only}
-    if risk_pct is not None:
-        overrides["risk_per_trade_pct"] = risk_pct
-        console.print(f"[yellow][!] risk_per_trade_pct overridden to {risk_pct}%[/yellow]")
+    symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
+    if not symbols:
+        symbols = ["EURUSD"]
 
-    cfg = dataclasses.replace(CFG, **overrides)
-    console.print(f"[bold cyan]Running backtest ({symbol}): {start} -> {end}[/bold cyan]")
+    if len(symbols) == 1:
+        sym = symbols[0]
+        overrides = {"early_entries_only": early_only}
+        if risk_pct is not None:
+            overrides["risk_per_trade_pct"] = risk_pct
+            console.print(f"[yellow][!] risk_per_trade_pct overridden to {risk_pct}%[/yellow]")
 
+        cfg = Config(symbol=sym, **overrides)
+        console.print(f"[bold cyan]Running backtest ({sym}): {start} -> {end}[/bold cyan]")
 
-    try:
-        if csv_path:
-            console.print(f"Loading data from CSV: {csv_path}")
-            m1 = load_m1_from_csv(csv_path)
-            # Slice to date range
-            import pandas as pd
-            from sweepbot.config import TZ_UTC
-            m1 = m1[(m1.index >= pd.Timestamp(start, tz=TZ_UTC)) &
-                     (m1.index <= pd.Timestamp(end, tz=TZ_UTC) + pd.Timedelta(days=1))]
-        else:
-            console.print("Downloading / loading cached M1 data from MT5...")
-            m1 = load_m1(start, end, cfg=cfg)
-    except Exception as e:
-        console.print(f"[red]Failed to load data: {e}[/red]")
-        sys.exit(1)
+        try:
+            if csv_path:
+                console.print(f"Loading data from CSV: {csv_path}")
+                m1 = load_m1_from_csv(csv_path)
+                import pandas as pd
+                from sweepbot.config import TZ_UTC
+                m1 = m1[(m1.index >= pd.Timestamp(start, tz=TZ_UTC)) &
+                         (m1.index <= pd.Timestamp(end, tz=TZ_UTC) + pd.Timedelta(days=1))]
+            else:
+                console.print("Downloading / loading cached M1 data from MT5...")
+                m1 = load_m1(start, end, cfg=cfg)
+        except Exception as e:
+            console.print(f"[red]Failed to load data: {e}[/red]")
+            sys.exit(1)
 
-    results, metrics = run_backtest(
-        m1,
-        account_balance=balance,
-        cfg=cfg,
-        print_log=not no_log,
-        save_csv=out_csv,
-        title=f"Backtest {start} -> {end}",
-    )
+        results, metrics = run_backtest(
+            m1,
+            account_balance=balance,
+            cfg=cfg,
+            print_log=not no_log,
+            save_csv=out_csv,
+            title=f"Backtest {start} -> {end}",
+        )
+    else:
+        # Multi-asset portfolio backtest
+        from sweepbot.engine.metrics import compute_metrics
+        from sweepbot.engine.reports import print_summary, print_trade_log, save_trade_csv
+
+        console.print(f"[bold cyan]Running multi-pair portfolio backtest ({', '.join(symbols)}): {start} -> {end}[/bold cyan]")
+        all_portfolio_trades = []
+        symbol_summaries = {}
+
+        for sym in symbols:
+            overrides = {"early_entries_only": early_only}
+            if risk_pct is not None:
+                overrides["risk_per_trade_pct"] = risk_pct
+            cfg_sym = Config(symbol=sym, **overrides)
+            console.print(f"Loading data for {sym}...")
+            try:
+                m1_sym = load_m1(start, end, cfg=cfg_sym)
+            except Exception as e:
+                console.print(f"[red]Failed to load data for {sym}: {e}[/red]")
+                sys.exit(1)
+
+            trades_sym, metrics_sym = run_backtest(
+                m1_sym,
+                account_balance=balance,
+                cfg=cfg_sym,
+                print_log=False,
+                title=f"{sym} Backtest",
+            )
+            all_portfolio_trades.extend(trades_sym)
+            symbol_summaries[sym] = (len(trades_sym), metrics_sym.total_net_r, metrics_sym.win_rate)
+
+        all_portfolio_trades.sort(key=lambda t: t.entry_time)
+        metrics = compute_metrics(all_portfolio_trades)
+
+        if not no_log:
+            print_trade_log(all_portfolio_trades)
+
+        print_summary(metrics, title=f"Portfolio ({', '.join(symbols)}) {start} -> {end}")
+
+        console.print("\n[bold]Symbol Breakdown:[/bold]")
+        for sym, (cnt, net_r, wr) in symbol_summaries.items():
+            console.print(f"  • {sym}: {cnt} trades | WR: {wr:.1%} | Net: {net_r:+.2f}R")
+
+        if out_csv:
+            save_trade_csv(all_portfolio_trades, out_csv)
 
     # SDD Section 8 acceptance criteria check
     console.print("\n[bold]Validation Protocol (SDD Section 8):[/bold]")

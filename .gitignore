@@ -12,6 +12,7 @@ htmlcov/
 data/cache/
 *.parquet
 trades*.csv
+*.csv
 .venv/
 env/
 venv/

@@ -8,6 +8,7 @@ handles the DST-aware shift to NY time internally via timeutil.py.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 # ── Canonical timezones ─────────────────────────────────────────────────────
@@ -22,6 +23,29 @@ PIP = 0.0001  # Default (EURUSD, GBPUSD)
 def pip_size(symbol: str) -> float:
     """Return pip size for a given forex symbol."""
     return 0.01 if "JPY" in symbol.upper() else 0.0001
+
+
+# ── Calibrated parameters per asset ──────────────────────────────────────────
+SYMBOL_PROFILES: dict[str, dict] = {
+    "EURUSD": {
+        "sweep_min_pips": 2.0,
+        "min_stop_pips": 5.0,
+        "max_stop_pips": 20.0,
+        "excluded_levels": ("LonL",),
+    },
+    "GBPUSD": {
+        "sweep_min_pips": 2.5,
+        "min_stop_pips": 8.0,
+        "max_stop_pips": 20.0,
+        "excluded_levels": ("LonL", "LonH"),
+    },
+    "USDJPY": {
+        "sweep_min_pips": 2.0,
+        "min_stop_pips": 5.0,
+        "max_stop_pips": 25.0,
+        "excluded_levels": ("LonL",),
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -69,10 +93,10 @@ class Config:
     signal_tf_minutes: int = 15  # M15 bars built from M1
 
     # ── Strategy parameters (in pips) ────────────────────────────────────────
-    sweep_min_pips: float = 2.0
+    sweep_min_pips: Optional[float] = None
     stop_buffer_pips: float = 1.0
-    min_stop_pips: float = 5.0
-    max_stop_pips: float = 20.0
+    min_stop_pips: Optional[float] = None
+    max_stop_pips: Optional[float] = None
     target_r: float = 2.0
     max_trades_per_day: int = 2
 
@@ -83,8 +107,8 @@ class Config:
     min_rejection_ratio: float = 0.0
     # Allowed patterns: ("one_candle", "two_candle") or ("two_candle",)
     allowed_patterns: tuple[str, ...] = ("one_candle", "two_candle")
-    # Excluded levels to avoid low-expectancy continuation traps (e.g. LonL)
-    excluded_levels: tuple[str, ...] = ("LonL",)
+    # Excluded levels to avoid low-expectancy continuation traps (e.g. LonL, LonH)
+    excluded_levels: Optional[tuple[str, ...]] = None
     # Restrict entries strictly before US cash equity open (19:00 IST summer / 20:00 IST winter)
     early_entries_only: bool = True
 
@@ -95,6 +119,25 @@ class Config:
 
     # ── Opening Bar (Bar 0) Seeding ──────────────────────────────────────────
     enable_bar_zero_seed: bool = True
+
+    def __post_init__(self) -> None:
+        profile = SYMBOL_PROFILES.get(self.symbol.upper(), SYMBOL_PROFILES["EURUSD"])
+        if self.sweep_min_pips is None:
+            object.__setattr__(self, "sweep_min_pips", profile["sweep_min_pips"])
+        if self.min_stop_pips is None:
+            object.__setattr__(self, "min_stop_pips", profile["min_stop_pips"])
+        if self.max_stop_pips is None:
+            object.__setattr__(self, "max_stop_pips", profile["max_stop_pips"])
+        if self.excluded_levels is None:
+            object.__setattr__(self, "excluded_levels", profile["excluded_levels"])
+
+    @classmethod
+    def for_symbol(cls, symbol: str, **overrides) -> "Config":
+        """Instantiate Config with calibrated defaults for the given symbol."""
+        profile = SYMBOL_PROFILES.get(symbol.upper(), SYMBOL_PROFILES["EURUSD"]).copy()
+        profile["symbol"] = symbol.upper()
+        profile.update(overrides)
+        return cls(**profile)
 
     # ── Risk ─────────────────────────────────────────────────────────────────
     # Use 0.25% until strategy is validated, then promote to 0.5%

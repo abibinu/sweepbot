@@ -74,3 +74,24 @@ class TestCli:
             result = runner.invoke(main, ["verify-tz", "--csv", str(csv_path)])
             assert result.exit_code == 0
             assert "PASSED" in result.output
+
+    def test_portfolio_backtest_with_multiple_symbols(self, monkeypatch):
+        rows = _generate_synthetic_day("2025-06-10")
+        df = pd.DataFrame(rows).set_index("timestamp").sort_index()
+
+        import sweepbot.data.loader
+        monkeypatch.setattr(sweepbot.data.loader, "load_m1", lambda start, end, cfg: df)
+
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            "backtest",
+            "--start", "2025-06-10",
+            "--end", "2025-06-10",
+            "--symbol", "EURUSD,GBPUSD",
+            "--no-log",
+        ])
+
+        assert result.exit_code == 0
+        assert "Running multi-pair portfolio backtest" in result.output
+        assert "EURUSD" in result.output
+        assert "GBPUSD" in result.output
