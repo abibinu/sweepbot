@@ -1,3 +1,4 @@
+
 """
 sweepbot/config.py
 ------------------
@@ -15,6 +16,18 @@ from zoneinfo import ZoneInfo
 TZ_IST = ZoneInfo("Asia/Kolkata")
 TZ_NY = ZoneInfo("America/New_York")
 TZ_UTC = ZoneInfo("UTC")
+
+def load_local_config() -> dict:
+    """Load config.json from project root if present."""
+    import json
+    from pathlib import Path
+    cfg_file = Path("config.json")
+    if cfg_file.exists():
+        try:
+            return json.loads(cfg_file.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
 
 # ── 1 pip in price terms ────────────────────────────────────────────────────
 PIP = 0.0001  # Default (EURUSD, GBPUSD)
@@ -142,6 +155,12 @@ class Config:
             object.__setattr__(self, "max_stop_pips", profile["max_stop_pips"])
         if self.excluded_levels is None:
             object.__setattr__(self, "excluded_levels", profile["excluded_levels"])
+
+        local_cfg = load_local_config()
+        if self.telegram_bot_token is None and local_cfg.get("telegram_bot_token"):
+            object.__setattr__(self, "telegram_bot_token", local_cfg["telegram_bot_token"])
+        if self.telegram_chat_id is None and local_cfg.get("telegram_chat_id"):
+            object.__setattr__(self, "telegram_chat_id", str(local_cfg["telegram_chat_id"]))
 
     @classmethod
     def for_symbol(cls, symbol: str, **overrides) -> "Config":

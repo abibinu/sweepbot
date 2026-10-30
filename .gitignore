@@ -17,3 +17,6 @@ trades*.csv
 .venv/
 env/
 venv/
+
+config.json
+.env

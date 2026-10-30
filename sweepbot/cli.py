@@ -292,5 +292,106 @@ def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, skip_w
         console.print("[bold]Session finished.[/bold]")
 
 
+
+
+# ── setup-telegram ────────────────────────────────────────────────────────────
+
+@main.command("setup-telegram")
+@click.option("--token", default=None, help="Telegram Bot Token from BotFather")
+@click.pass_context
+def setup_telegram(ctx, token):
+    """Interactively verify Telegram bot token and auto-detect chat ID."""
+    import json
+    import time
+    import urllib.request
+    import urllib.error
+    from pathlib import Path
+    from sweepbot.config import load_local_config
+
+    cfg_data = load_local_config()
+    bot_token = token or cfg_data.get("telegram_bot_token")
+
+    if not bot_token:
+        bot_token = click.prompt("Enter your Telegram Bot Token (from @BotFather)")
+    bot_token = bot_token.strip()
+
+    console.print(f"[cyan]Verifying bot token with Telegram API...[/cyan]")
+    url_me = f"https://api.telegram.org/bot{bot_token}/getMe"
+    try:
+        req = urllib.request.Request(url_me, headers={"User-Agent": "SweepBot/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8", errors="ignore")
+        console.print(f"[bold red]Telegram verification failed (HTTP {e.code}):[/bold red] {err_msg}")
+        console.print("[yellow]Please check BotFather on Telegram -> /mybots -> select your bot -> API Token, and enter the fresh token.[/yellow]")
+        return
+    except Exception as e:
+        console.print(f"[bold red]Network error connecting to Telegram:[/bold red] {e}")
+        return
+
+    bot_info = data.get("result", {})
+    username = bot_info.get("username", "your bot")
+    first_name = bot_info.get("first_name", "Bot")
+    console.print(f"[bold green]Bot verified successfully:[/bold green] {first_name} (@{username})")
+
+    console.print("\n[bold yellow]To automatically discover your Chat ID:[/bold yellow]")
+    console.print(f"  1. Open Telegram on your phone or PC.")
+    console.print(f"  2. Search for: [bold cyan]@{username}[/bold cyan]")
+    console.print(f"  3. Click [bold]Start[/bold] or send any message (e.g. 'hello').")
+    console.print("[cyan]Waiting for your message (listening for up to 60 seconds)...[/cyan]")
+
+    url_updates = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+    chat_id = None
+    chat_name = ""
+
+    for _ in range(30):
+        time.sleep(2)
+        try:
+            req = urllib.request.Request(url_updates, headers={"User-Agent": "SweepBot/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                upd = json.loads(resp.read().decode())
+                results = upd.get("result", [])
+                if results:
+                    last_msg = results[-1].get("message") or results[-1].get("channel_post")
+                    if last_msg and "chat" in last_msg:
+                        chat_id = str(last_msg["chat"]["id"])
+                        chat_name = last_msg["chat"].get("first_name") or last_msg["chat"].get("title") or "User"
+                        break
+        except Exception:
+            pass
+
+    if not chat_id:
+        console.print("[bold red]Timed out waiting for message.[/bold red]")
+        console.print("[yellow]You can also find your chat ID by messaging @userinfobot on Telegram, then edit config.json.[/yellow]")
+        return
+
+    console.print(f"[bold green]Discovered Chat ID:[/bold green] {chat_id} ({chat_name})")
+
+    # Send a confirmation test message
+    url_send = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": f"<b>SweepBot Connected</b>\nTelegram notifications have been successfully configured for {chat_name}!",
+        "parse_mode": "HTML",
+    }
+    try:
+        req = urllib.request.Request(
+            url_send,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "User-Agent": "SweepBot/1.0"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        console.print("[bold green]Confirmation message sent to your Telegram![/bold green]")
+    except Exception as e:
+        console.print(f"[yellow]Could not send test message: {e}[/yellow]")
+
+    # Save to config.json
+    cfg_file = Path("config.json")
+    cfg_data["telegram_bot_token"] = bot_token
+    cfg_data["telegram_chat_id"] = str(chat_id)
+    cfg_file.write_text(json.dumps(cfg_data, indent=2), encoding="utf-8")
+    console.print(f"[bold green]Saved to config.json successfully![/bold green]")
+
 if __name__ == "__main__":
     main()
