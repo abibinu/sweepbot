@@ -145,11 +145,28 @@ def run_live(
 
     if wait_for_arm and now < arm_time:
         wait_sec = (arm_time - now).total_seconds()
+        hours = int(wait_sec // 3600)
+        minutes = int((wait_sec % 3600) // 60)
         log.info(
-            "Waiting %.0f seconds until %s IST arm time...",
-            wait_sec, arm_time.strftime("%H:%M"),
+            "Waiting %dh %02dm (%.0fs) until %s IST arm time...",
+            hours, minutes, wait_sec, arm_time.strftime("%H:%M"),
         )
-        time.sleep(max(0, wait_sec))
+        last_heartbeat_h = hours
+        while _now_ist() < arm_time:
+            rem = (arm_time - _now_ist()).total_seconds()
+            if rem <= 0:
+                break
+            sleep_chunk = min(30.0, rem)
+            time.sleep(sleep_chunk)
+            cur_rem = (arm_time - _now_ist()).total_seconds()
+            cur_h = int(cur_rem // 3600)
+            cur_m = int((cur_rem % 3600) // 60)
+            if cur_rem > 0 and (cur_h < last_heartbeat_h or cur_m % 30 == 0 and int(cur_rem) % 30 < 30):
+                last_heartbeat_h = cur_h
+                log.info(
+                    "[STANDBY] %dh %02dm remaining until %s IST arm time (connection active)...",
+                    cur_h, cur_m, arm_time.strftime("%H:%M"),
+                )
 
     # ── Load levels & initialize state machines per symbol ────────────────────
     trade_date = trading_day_label(_now_ist())

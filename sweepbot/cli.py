@@ -227,11 +227,13 @@ def verify_tz(ctx, csv_path):
               help="Risk per trade as % of equity (default: 0.25%)")
 @click.option("--max-positions", default=None, type=int,
               help="Max concurrent open positions across portfolio (default: 3)")
+@click.option("--skip-wait", is_flag=True, default=False,
+              help="Skip waiting for 17:25 IST arm time and start immediately")
 @click.option("--login", default=None, type=int, help="MT5 account login")
 @click.option("--password", default=None, help="MT5 account password")
 @click.option("--server", default=None, help="MT5 broker server")
 @click.pass_context
-def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, login, password, server):
+def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, skip_wait, login, password, server):
     """Run the live / paper trading session."""
     import dataclasses
     from sweepbot.config import CFG
@@ -274,7 +276,7 @@ def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, login,
 
     try:
         from sweepbot.live.runner import run_live
-        run_live(broker, symbols=symbols, cfg=cfg, dry_run=dry_run)
+        run_live(broker, symbols=symbols, cfg=cfg, dry_run=dry_run, wait_for_arm=not skip_wait)
     finally:
         if hasattr(broker, "disconnect"):
             broker.disconnect()
