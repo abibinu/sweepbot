@@ -136,16 +136,13 @@ def get_session_times(date: dt.date) -> SessionTimes:
 def trading_day_label(ts: pd.Timestamp) -> dt.date:
     """
     A trading day rolls at 02:30 IST.
-    Label = (IST_timestamp + 7 hours).date()
-    This ensures the NY session (17:30–02:30 IST) falls on one calendar date.
-
-    Day D covers: (D-1) 02:30 IST → D 02:30 IST
+    A trading day D covers: D 02:30 IST -> (D+1) 02:29 IST.
+    Subtracting 2h30m aligns the 02:30 IST boundary to 00:00 (midnight).
     """
     if ts.tzinfo is None:
         raise ValueError("Timestamp must be tz-aware")
     ist = to_ist(ts)
-    # Shift forward 7 h so midnight+30m becomes the next day boundary
-    shifted = ist + dt.timedelta(hours=7)
+    shifted = ist - dt.timedelta(hours=2, minutes=30)
     return shifted.date()
 
 

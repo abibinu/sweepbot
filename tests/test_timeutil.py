@@ -75,14 +75,13 @@ class TestTradingDayLabel:
         """23:00 IST → same trading day"""
         ts = pd.Timestamp("2025-06-10 23:00:00", tz=TZ_IST)
         label = trading_day_label(ts)
-        assert label == dt.date(2025, 6, 11)  # +7h shift → next day
+        assert label == dt.date(2025, 6, 10)
 
     def test_after_midnight_before_rollover(self):
         """01:00 IST → still previous trading day (rolls at 02:30)"""
         ts = pd.Timestamp("2025-06-11 01:00:00", tz=TZ_IST)
-        # 01:00 + 7h = 08:00 → same date as 2025-06-11
         label = trading_day_label(ts)
-        assert label == dt.date(2025, 6, 11)
+        assert label == dt.date(2025, 6, 10)
 
     def test_after_rollover_is_new_day(self):
         """03:00 IST → new trading day"""
