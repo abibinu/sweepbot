@@ -56,11 +56,14 @@ class OrderSpec:
 def pip_value_usd_per_lot(symbol: str, current_price: float = 1.0) -> float:
     """Return USD value of 1 pip for 1.0 standard lot."""
     sym = symbol.upper()
-    if sym.endswith("USD"):  # EURUSD, GBPUSD
+    if sym.endswith("USD"):  # EURUSD, GBPUSD, AUDUSD
         return 10.0
     elif "JPY" in sym:
         # USDJPY: 1 pip = 0.01 JPY -> 1000 JPY / price in USD
         return 1000.0 / current_price if current_price > 0 else 6.70
+    elif sym.startswith("USD"):  # USDCAD, USDCHF
+        # 10 quote currency / price
+        return 10.0 / current_price if current_price > 0 else 7.50
     return 10.0
 
 
@@ -156,7 +159,7 @@ def build_order(
     if math.isnan(risk_pips):
         return None
 
-    lots = compute_lot_size(account_balance, risk_pips, cfg)
+    lots = compute_lot_size(account_balance, risk_pips, cfg, current_price=bid_price)
     commission = compute_commission(lots, cfg)
     risk_usd = account_balance * (cfg.risk_per_trade_pct / 100.0)
 

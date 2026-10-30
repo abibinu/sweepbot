@@ -219,18 +219,31 @@ def verify_tz(ctx, csv_path):
               show_default=True, help="Trading mode")
 @click.option("--dry-run", is_flag=True, default=False,
               help="Detect signals but do NOT place orders")
-@click.option("--symbol", default="EURUSD", show_default=True, help="Forex symbol to trade")
-@click.option("--early-only/--all-window", "early_only", default=True, help="Restrict entries before 19:00 IST / 09:30 NY cash open")
+@click.option("--symbol", default="EURUSD,GBPUSD,USDJPY,AUDUSD,USDCAD", show_default=True,
+              help="Forex symbol(s) to trade (comma-separated for multi-pair)")
+@click.option("--early-only/--all-window", "early_only", default=True,
+              help="Restrict entries before 19:00 IST / 09:30 NY cash open")
+@click.option("--risk-pct", default=None, type=float,
+              help="Risk per trade as % of equity (default: 0.25%)")
+@click.option("--max-positions", default=None, type=int,
+              help="Max concurrent open positions across portfolio (default: 3)")
 @click.option("--login", default=None, type=int, help="MT5 account login")
 @click.option("--password", default=None, help="MT5 account password")
 @click.option("--server", default=None, help="MT5 broker server")
 @click.pass_context
-def live(ctx, mode, dry_run, symbol, early_only, login, password, server):
+def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, login, password, server):
     """Run the live / paper trading session."""
     import dataclasses
     from sweepbot.config import CFG
 
-    overrides = {"symbol": symbol, "early_entries_only": early_only}
+    symbols = [s.strip().upper() for s in symbol.split(",") if s.strip()]
+    primary_symbol = symbols[0] if symbols else "EURUSD"
+
+    overrides = {"symbol": primary_symbol, "early_entries_only": early_only}
+    if risk_pct is not None:
+        overrides["risk_per_trade_pct"] = risk_pct
+    if max_positions is not None:
+        overrides["max_open_positions"] = max_positions
     if login or password or server:
         overrides.update({
             "mt5_login": login or CFG.mt5_login,
@@ -239,7 +252,7 @@ def live(ctx, mode, dry_run, symbol, early_only, login, password, server):
         })
     cfg = dataclasses.replace(CFG, **overrides)
 
-    console.print(f"[bold cyan]Starting SweepBot [{mode.upper()}] mode[/bold cyan]")
+    console.print(f"[bold cyan]Starting SweepBot [{mode.upper()}] mode for {len(symbols)} symbol(s): {', '.join(symbols)}[/bold cyan]")
     if dry_run:
         console.print("[yellow][!] DRY RUN -- no real orders will be placed[/yellow]")
 
@@ -261,7 +274,7 @@ def live(ctx, mode, dry_run, symbol, early_only, login, password, server):
 
     try:
         from sweepbot.live.runner import run_live
-        run_live(broker, cfg=cfg, dry_run=dry_run)
+        run_live(broker, symbols=symbols, cfg=cfg, dry_run=dry_run)
     finally:
         if hasattr(broker, "disconnect"):
             broker.disconnect()

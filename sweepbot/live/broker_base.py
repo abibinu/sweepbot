@@ -46,10 +46,10 @@ class BrokerBase(ABC):
         ...
 
     @abstractmethod
-    def get_open_positions(self, symbol: str) -> list[dict]:
+    def get_open_positions(self, symbol: Optional[str] = None) -> list[dict]:
         """
-        Return open positions for *symbol* as list of dicts with keys:
-            ticket, direction, lots, open_price, sl, tp, open_time
+        Return open positions (filtered by *symbol* if provided) as list of dicts with keys:
+            ticket, symbol, direction, lots, open_price, sl, tp, open_time
         """
         ...
 

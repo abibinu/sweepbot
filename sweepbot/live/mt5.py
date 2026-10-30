@@ -90,26 +90,27 @@ class MT5Broker(BrokerBase):
 
     # ── State Recovery ────────────────────────────────────────────────────────
 
-    def _recover_state(self) -> None:
+    def _recover_state(self, symbol: Optional[str] = None) -> None:
         """
         SDD §9 State Recovery:
-        Query existing open positions on EURUSD. If any are found,
+        Query existing open positions. If any are found,
         record their tickets so the runner skips new entry signals
-        for the rest of the day to prevent double-firing.
+        to prevent double-firing after restart.
         """
-        positions = self.get_open_positions(self.cfg.symbol)
+        positions = self.get_open_positions(symbol)
         if positions:
             log.warning(
-                "[STATE RECOVERY] Found %d open %s position(s) — "
+                "[STATE RECOVERY] Found %d open position(s) — "
                 "new entries will be BLOCKED until all positions are closed.",
-                len(positions), self.cfg.symbol,
+                len(positions),
             )
             for pos in positions:
                 ticket = str(pos["ticket"])
                 self._recovered_tickets.add(ticket)
                 log.warning(
-                    "  Recovered: ticket=%s dir=%s lots=%.2f SL=%.5f TP=%.5f",
-                    ticket, pos["direction"], pos["lots"], pos["sl"], pos["tp"],
+                    "  Recovered: ticket=%s sym=%s dir=%s lots=%.2f SL=%.5f TP=%.5f",
+                    ticket, pos.get("symbol", self.cfg.symbol), pos["direction"],
+                    pos["lots"], pos["sl"], pos["tp"],
                 )
         else:
             log.info("[STATE RECOVERY] No open positions found — clean start.")
@@ -117,8 +118,12 @@ class MT5Broker(BrokerBase):
     @property
     def has_recovered_positions(self) -> bool:
         """True if there are unresolved positions from state recovery."""
-        # Check if recovered positions are still open
-        open_tickets = {str(p["ticket"]) for p in self.get_open_positions(self.cfg.symbol)}
+        open_tickets = {str(p["ticket"]) for p in self.get_open_positions()}
+        return bool(self._recovered_tickets & open_tickets)
+
+    def has_recovered_positions_for(self, symbol: Optional[str] = None) -> bool:
+        """True if there are unresolved positions for a specific symbol."""
+        open_tickets = {str(p["ticket"]) for p in self.get_open_positions(symbol)}
         return bool(self._recovered_tickets & open_tickets)
 
     # ── BrokerBase implementation ─────────────────────────────────────────────
@@ -146,17 +151,17 @@ class MT5Broker(BrokerBase):
 
     def place_order(self, order: OrderSpec) -> Optional[str]:
         self._require_connection()
+        symbol = getattr(order, "symbol", self.cfg.symbol)
 
-        # Block if state recovery has unresolved positions
-        if self.has_recovered_positions:
+        # Block if state recovery has unresolved positions for this symbol
+        if self.has_recovered_positions_for(symbol):
             log.warning(
-                "[SAFETY] Blocking new order — recovered position still open. "
-                "Ticket: %s", order
+                "[SAFETY] Blocking new order on %s — recovered position still open. "
+                "Order: %s", symbol, order
             )
             return None
 
         mt5 = self._mt5
-        symbol = self.cfg.symbol
 
         # Determine order type
         if order.direction == Direction.LONG:
@@ -192,8 +197,8 @@ class MT5Broker(BrokerBase):
 
         ticket = str(result.order)
         log.info(
-            "[MT5] Order filled: ticket=%s %s %.2fL @ %.5f SL=%.5f TP=%.5f",
-            ticket, order.direction.name, order.lot_size,
+            "[MT5] Order filled: ticket=%s %s %s %.2fL @ %.5f SL=%.5f TP=%.5f",
+            ticket, symbol, order.direction.name, order.lot_size,
             result.price, order.stop_price, order.target_price,
         )
         return ticket
@@ -201,7 +206,6 @@ class MT5Broker(BrokerBase):
     def close_position(self, ticket: str) -> bool:
         self._require_connection()
         mt5 = self._mt5
-        symbol = self.cfg.symbol
 
         positions = mt5.positions_get(ticket=int(ticket))
         if not positions:
@@ -209,6 +213,9 @@ class MT5Broker(BrokerBase):
             return False
 
         pos = positions[0]
+        pos_sym = getattr(pos, "symbol", None)
+        symbol = pos_sym if isinstance(pos_sym, str) else self.cfg.symbol
+
         if pos.type == mt5.ORDER_TYPE_BUY:
             close_type = mt5.ORDER_TYPE_SELL
             price = self.get_current_bid(symbol)
@@ -238,20 +245,26 @@ class MT5Broker(BrokerBase):
             )
             return False
 
-        log.info("[MT5] Closed position ticket=%s @ %.5f", ticket, result.price)
+        log.info("[MT5] Closed position ticket=%s (%s) @ %.5f", ticket, symbol, result.price)
         self._recovered_tickets.discard(ticket)
         return True
 
-    def get_open_positions(self, symbol: str) -> list[dict]:
+    def get_open_positions(self, symbol: Optional[str] = None) -> list[dict]:
         self._require_connection()
         mt5 = self._mt5
-        positions = mt5.positions_get(symbol=symbol)
+        if symbol is not None:
+            positions = mt5.positions_get(symbol=symbol)
+        else:
+            positions = mt5.positions_get()
         if positions is None:
             return []
         result = []
         for p in positions:
+            pos_sym = getattr(p, "symbol", None)
+            sym_str = pos_sym if isinstance(pos_sym, str) else (symbol or self.cfg.symbol)
             result.append({
                 "ticket": str(p.ticket),
+                "symbol": sym_str,
                 "direction": "LONG" if p.type == mt5.ORDER_TYPE_BUY else "SHORT",
                 "lots": p.volume,
                 "open_price": p.price_open,
@@ -275,8 +288,8 @@ class MT5Broker(BrokerBase):
 
     # ── Safety: close all positions ───────────────────────────────────────────
 
-    def close_all_positions(self, symbol: str, reason: str = "time-exit") -> None:
-        """Close all open positions for *symbol* (used at 21:30 IST kill)."""
+    def close_all_positions(self, symbol: Optional[str] = None, reason: str = "time-exit") -> None:
+        """Close all open positions (filtered by symbol if provided)."""
         positions = self.get_open_positions(symbol)
         if not positions:
             log.info("[MT5] No positions to close at %s", reason)

@@ -161,6 +161,7 @@ class Config:
 
     # ── Daily safety limits ───────────────────────────────────────────────────
     daily_loss_kill_pct: float = 1.5  # Hard kill at -1.5% daily loss
+    max_open_positions: int = 3       # Max concurrent open positions in portfolio
 
     # ── Data cache directory (relative to project root) ──────────────────────
     data_dir: str = "data/cache"
