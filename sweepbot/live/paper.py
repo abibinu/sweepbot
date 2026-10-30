@@ -195,7 +195,7 @@ class PaperBroker(BrokerBase):
 
     # ── Paper-specific helpers ────────────────────────────────────────────────
 
-    def check_sl_tp(self, symbol: Optional[str] = None) -> list[str]:
+    def check_sl_tp(self, symbol: Optional[str] = None, notifier: Optional[any] = None) -> list[str]:
         """
         Check open positions against current price.
         Applies dynamic breakeven trailing (SDD §2.7) and closes any that hit SL or TP.
@@ -224,26 +224,42 @@ class PaperBroker(BrokerBase):
                         pos.sl = pos.open_price + buf
                         pos.breakeven_active = True
                         log.info("[BREAKEVEN] %s %s moved to %.5f", pos.symbol, ticket, pos.sl)
+                        if notifier and hasattr(notifier, "notify_breakeven"):
+                            notifier.notify_breakeven(pos.symbol, ticket, pos.sl)
                 else:  # SHORT
                     if ask <= pos.open_price - trigger_dist:
                         pos.sl = pos.open_price - buf
                         pos.breakeven_active = True
                         log.info("[BREAKEVEN] %s %s moved to %.5f", pos.symbol, ticket, pos.sl)
+                        if notifier and hasattr(notifier, "notify_breakeven"):
+                            notifier.notify_breakeven(pos.symbol, ticket, pos.sl)
 
             # 2. Check SL / TP Hit
             if pos.direction == Direction.LONG:
                 if bid <= pos.sl:
                     self.close_position(ticket, exit_price=pos.sl)
                     closed.append(ticket)
+                    if notifier and hasattr(notifier, "notify_close") and self._closed_trades:
+                        tr = self._closed_trades[-1]
+                        notifier.notify_close(ticket, pos.symbol, "SL", tr["net_r"], tr["net_pnl_usd"], pos.sl)
                 elif bid >= pos.tp:
                     self.close_position(ticket, exit_price=pos.tp)
                     closed.append(ticket)
+                    if notifier and hasattr(notifier, "notify_close") and self._closed_trades:
+                        tr = self._closed_trades[-1]
+                        notifier.notify_close(ticket, pos.symbol, "TP", tr["net_r"], tr["net_pnl_usd"], pos.tp)
             else:  # SHORT
                 if ask >= pos.sl:
                     self.close_position(ticket, exit_price=pos.sl)
                     closed.append(ticket)
+                    if notifier and hasattr(notifier, "notify_close") and self._closed_trades:
+                        tr = self._closed_trades[-1]
+                        notifier.notify_close(ticket, pos.symbol, "SL", tr["net_r"], tr["net_pnl_usd"], pos.sl)
                 elif ask <= pos.tp:
                     self.close_position(ticket, exit_price=pos.tp)
                     closed.append(ticket)
+                    if notifier and hasattr(notifier, "notify_close") and self._closed_trades:
+                        tr = self._closed_trades[-1]
+                        notifier.notify_close(ticket, pos.symbol, "TP", tr["net_r"], tr["net_pnl_usd"], pos.tp)
 
         return closed

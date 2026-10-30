@@ -25,7 +25,7 @@ import pandas as pd
 
 from sweepbot.config import CFG, PIP, TZ_IST, TZ_UTC
 from sweepbot.live.broker_base import BrokerBase
-from sweepbot.risk import OrderSpec
+from sweepbot.risk import OrderSpec, pip_value_usd_per_lot
 from sweepbot.strategy import Direction
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,8 @@ class MT5Broker(BrokerBase):
         self._connected = False
         # State recovery: positions reconstructed on init
         self._recovered_tickets: set[str] = set()
+        self._active_orders: dict[str, OrderSpec] = {}
+        self._breakeven_active: set[str] = set()
 
     # ── Connection lifecycle ──────────────────────────────────────────────────
 
@@ -72,7 +74,15 @@ class MT5Broker(BrokerBase):
             return False
 
         self._connected = True
-        log.info("MT5 connected: %s", self._mt5.terminal_info())
+        terminal_info = self._mt5.terminal_info()
+        log.info("MT5 connected: %s", terminal_info)
+        if terminal_info and not terminal_info.trade_allowed:
+            log.warning(
+                "\n====================================================================\n"
+                "[ALGO TRADING DISABLED] Automated trading is turned OFF in MT5 terminal!\n"
+                "Orders cannot be sent until you click 'Algo Trading' (Ctrl+E) in MT5.\n"
+                "===================================================================="
+            )
 
         # ── State Recovery (SDD §9 CRITICAL) ────────────────────────────────
         self._recover_state()
@@ -196,6 +206,7 @@ class MT5Broker(BrokerBase):
             return None
 
         ticket = str(result.order)
+        self._active_orders[ticket] = order
         log.info(
             "[MT5] Order filled: ticket=%s %s %s %.2fL @ %.5f SL=%.5f TP=%.5f",
             ticket, symbol, order.direction.name, order.lot_size,
@@ -306,3 +317,95 @@ class MT5Broker(BrokerBase):
         for pos in positions:
             self.close_position(pos["ticket"])
         log.info("[MT5] All positions closed at %s", reason)
+
+    def check_sl_tp(self, symbol: Optional[str] = None, notifier: Optional[any] = None) -> list[str]:
+        """
+        Check open MT5 positions for dynamic breakeven (+1.3R) and track closed positions.
+        Returns list of closed tickets.
+        """
+        if not self._connected or self._mt5 is None:
+            return []
+
+        mt5 = self._mt5
+        open_positions = {str(p["ticket"]): p for p in self.get_open_positions(symbol)}
+        closed_tickets = []
+
+        # 1. Detect closed positions
+        tracked_tickets = list(self._active_orders.keys())
+        for ticket in tracked_tickets:
+            if symbol is not None and self._active_orders[ticket].symbol != symbol:
+                continue
+            if ticket not in open_positions:
+                order = self._active_orders.pop(ticket)
+                self._breakeven_active.discard(ticket)
+                closed_tickets.append(ticket)
+
+                deals = mt5.history_deals_get(position=int(ticket))
+                profit_usd = 0.0
+                exit_price = order.entry_price
+                if deals:
+                    exit_deal = deals[-1]
+                    profit_usd = getattr(exit_deal, "profit", 0.0)
+                    exit_price = getattr(exit_deal, "price", order.entry_price)
+
+                usd_per_pip_lot = pip_value_usd_per_lot(order.symbol, exit_price)
+                risk_usd = order.risk_pips * usd_per_pip_lot * order.lot_size
+                net_r = (profit_usd - order.commission_usd) / risk_usd if risk_usd > 0 else 0.0
+
+                log.info(
+                    "[MT5] Position %s (%s) closed @ %.5f | Profit: %+.2f USD (%+.2fR)",
+                    ticket, order.symbol, exit_price, profit_usd, net_r,
+                )
+                if notifier and hasattr(notifier, "notify_close"):
+                    notifier.notify_close(
+                        ticket=ticket,
+                        symbol=order.symbol,
+                        reason="Broker SL/TP Exit",
+                        net_r=net_r,
+                        pnl_usd=profit_usd - order.commission_usd,
+                        exit_price=exit_price,
+                    )
+
+        # 2. Dynamic Breakeven Trailing (+1.3R)
+        if getattr(self.cfg, "enable_breakeven", True):
+            for ticket, order in list(self._active_orders.items()):
+                if ticket in self._breakeven_active or ticket not in open_positions:
+                    continue
+                pos = open_positions[ticket]
+                sym = order.symbol
+                pip = pip_size(sym)
+                trigger_dist = self.cfg.breakeven_trigger_r * order.risk_pips * pip
+                buf = self.cfg.breakeven_buffer_pips * pip
+
+                try:
+                    bid = self.get_current_bid(sym)
+                    ask = self.get_ask(sym)
+                except Exception:
+                    continue
+
+                new_sl = None
+                if order.direction == Direction.LONG:
+                    if bid >= order.entry_price + trigger_dist:
+                        new_sl = order.entry_price + buf
+                else:  # SHORT
+                    if ask <= order.entry_price - trigger_dist:
+                        new_sl = order.entry_price - buf
+
+                if new_sl is not None:
+                    request = {
+                        "action": mt5.TRADE_ACTION_SLTP,
+                        "position": int(ticket),
+                        "symbol": sym,
+                        "sl": new_sl,
+                        "tp": pos["tp"],
+                    }
+                    result = mt5.order_send(request)
+                    if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                        self._breakeven_active.add(ticket)
+                        log.info("[BREAKEVEN] MT5 position %s (%s) SL trailed to %.5f", ticket, sym, new_sl)
+                        if notifier and hasattr(notifier, "notify_breakeven"):
+                            notifier.notify_breakeven(sym, ticket, new_sl)
+                    else:
+                        log.warning("[BREAKEVEN] Failed to update SL for %s: %s", ticket, getattr(result, "comment", mt5.last_error()))
+
+        return closed_tickets

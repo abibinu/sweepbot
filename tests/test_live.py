@@ -428,3 +428,29 @@ class TestPortfolioLiveRunner:
         # close_all_positions should be called when kill switch triggers
         mock_broker.close_all_positions.assert_called_once()
 
+
+
+class TestTelegramNotifier:
+    def test_notifier_disabled_without_credentials(self):
+        from sweepbot.live.notify import TelegramNotifier
+        notifier = TelegramNotifier()
+        assert notifier.is_enabled is False
+        assert notifier.send_message("Test") is False
+
+    def test_notifier_send_message_mock(self, monkeypatch):
+        from sweepbot.live.notify import TelegramNotifier
+        from unittest.mock import MagicMock
+
+        notifier = TelegramNotifier(bot_token="dummy_token", chat_id="123456")
+        assert notifier.is_enabled is True
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"ok": true}'
+        mock_urlopen = MagicMock()
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
+
+        ok = notifier.send_message("Hello world")
+        assert ok is True
+        mock_urlopen.assert_called_once()

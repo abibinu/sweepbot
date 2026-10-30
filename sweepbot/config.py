@@ -175,6 +175,10 @@ class Config:
     mt5_password: str | None = None
     mt5_server: str | None = None
 
+    # ── Telegram notifications ───────────────────────────────────────────────
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
 
 # Module-level default instance (import and use directly)
 CFG = Config()

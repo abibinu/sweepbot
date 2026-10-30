@@ -229,11 +229,13 @@ def verify_tz(ctx, csv_path):
               help="Max concurrent open positions across portfolio (default: 3)")
 @click.option("--skip-wait", is_flag=True, default=False,
               help="Skip waiting for 17:25 IST arm time and start immediately")
+@click.option("--tg-token", default=None, help="Telegram bot token")
+@click.option("--tg-chat-id", default=None, help="Telegram chat ID")
 @click.option("--login", default=None, type=int, help="MT5 account login")
 @click.option("--password", default=None, help="MT5 account password")
 @click.option("--server", default=None, help="MT5 broker server")
 @click.pass_context
-def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, skip_wait, login, password, server):
+def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, skip_wait, tg_token, tg_chat_id, login, password, server):
     """Run the live / paper trading session."""
     import dataclasses
     from sweepbot.config import CFG
@@ -246,6 +248,13 @@ def live(ctx, mode, dry_run, symbol, early_only, risk_pct, max_positions, skip_w
         overrides["risk_per_trade_pct"] = risk_pct
     if max_positions is not None:
         overrides["max_open_positions"] = max_positions
+    import os
+    token = tg_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat = tg_chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+    if token:
+        overrides["telegram_bot_token"] = token
+    if chat:
+        overrides["telegram_chat_id"] = chat
     if login or password or server:
         overrides.update({
             "mt5_login": login or CFG.mt5_login,

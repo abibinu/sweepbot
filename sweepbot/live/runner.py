@@ -214,6 +214,16 @@ def run_live(
     kill_threshold = start_balance * (1.0 - cfg.daily_loss_kill_pct / 100.0)
     print_portfolio_dashboard(levels_map, cfg_map, start_balance, kill_threshold, trade_date)
 
+    from sweepbot.live.notify import TelegramNotifier
+    notifier = TelegramNotifier(
+        bot_token=getattr(cfg, "telegram_bot_token", None),
+        chat_id=getattr(cfg, "telegram_chat_id", None),
+    )
+    if notifier.is_enabled:
+        log.info("[TELEGRAM] Notifications enabled for chat_id: %s", notifier.chat_id)
+        mode_label = "DRY RUN" if dry_run else ("LIVE" if not hasattr(broker, "_initial_balance") else "PAPER")
+        notifier.notify_startup(str(trade_date), active_symbols, start_balance, kill_threshold, mode=mode_label)
+
     session_tickets: list[str] = []
     bar_idx = 0
 
@@ -241,12 +251,14 @@ def run_live(
                 "[KILL SWITCH] Daily loss limit triggered: balance %.2f <= %.2f (-%.2f%%). STOPPING.",
                 current_balance, kill_threshold, cfg.daily_loss_kill_pct,
             )
+            if notifier.is_enabled:
+                notifier.notify_kill_switch(current_balance, kill_threshold)
             _close_all_open(broker, session_tickets)
             break
 
         # 3. Dynamic Breakeven and SL/TP checking
         if hasattr(broker, "check_sl_tp"):
-            closed = broker.check_sl_tp()
+            closed = broker.check_sl_tp(notifier=notifier)
             for t in closed:
                 if t in session_tickets:
                     session_tickets.remove(t)
@@ -261,7 +273,7 @@ def run_live(
                 if broker.get_account_balance() <= kill_threshold:
                     break
                 if hasattr(broker, "check_sl_tp"):
-                    closed = broker.check_sl_tp()
+                    closed = broker.check_sl_tp(notifier=notifier)
                     for t in closed:
                         if t in session_tickets:
                             session_tickets.remove(t)
@@ -363,6 +375,8 @@ def run_live(
                         order.direction.name, sym, order.lot_size, order.entry_price,
                         ticket, trades_today[sym], cfg_s.max_trades_per_day,
                     )
+                    if notifier.is_enabled:
+                        notifier.notify_order(order, ticket)
 
         bar_idx += 1
 
