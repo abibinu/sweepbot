@@ -277,9 +277,18 @@ class MT5Broker(BrokerBase):
     def get_m1_bars(self, symbol: str, count: int) -> pd.DataFrame:
         self._require_connection()
         mt5 = self._mt5
+        mt5.symbol_select(symbol, True)
+
         rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, count)
-        if rates is None:
+        retries = 3
+        while (rates is None or len(rates) == 0) and retries > 0:
+            time.sleep(0.3)
+            rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, count)
+            retries -= 1
+
+        if rates is None or len(rates) == 0:
             return pd.DataFrame()
+
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
         df = df.set_index("time").rename_axis("timestamp")
